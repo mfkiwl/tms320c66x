@@ -1,0 +1,113 @@
+	Dunit_1,    //0:  7-12 10000
+	Dunit_2,    //1:  0 6-9 1100
+	Dunit_3,    //2:  4-6 11
+	Dunit_4,    //3:  4-6 01
+	Dunit_5,    //4:  4-6 11
+	Dunit_6,    //5:  4-6 01
+	Dunit_7,    //6:  4-6 01
+	Lunit_1,    //7:  5-11 110
+	Lunit_2,    //8:  13-17 
+	Lunit_3,    //9:  5-11 110
+	Munit_1,    //10: 6-10 1100
+	Munit_2,    //11: 13-17
+	Munit_3,    //12: 6-10 1100
+    Munit_4,    //13: 7-11 00000
+	Sunit_1,    //14: 6-11 1000
+	Sunit_2,    //15: 5-11 110
+	Sunit_5,	//18: 1 6-9 1100
+    Sunit_14,   //27: 1 6-9 1100
+    Sunit_15,   //28: 13-17
+	Sunit_16,   //29: 6-7 0010
+
+.... Dunit_2,    //1:  10 6-9 1100 [15]
+.... Munit_1,    //10: 0 6-10 1100 [34]
+0001 Munit_3,    //12: 0 6-10 1100 [11]
+.... Sunit_5,	 //18: 11 6-9 1100 [14]
+0001 Sunit_14,   //27: 11 6-9 1100 [1]
+
+Sunit_14
+RPACK2, sint, xsint, s2 //111011
+
+Munit_1
+AVG2, s2, xs2, s2 //010011
+AVGU4, u4, xu4, u4 //010010
+dotp2, s2, xs2, int //001100
+dotpn2, s2, xs2, sllong //001001
+DOTPNRSU2, s2, xu2, int //000111
+DOTPNRUS2, s2, xu2, int //000111
+DOTPRSU2, s2, xu2, int //001101
+DOTPRUS2, s2, xu2, int //001101
+DOTPSU4, s4, xu4, int //000010
+DOTPUS4, s4, xu4, int //000010
+DOTPU4, s4, xu4, int //000110
+GMPY4, s4, xu4, u4 //010001
+MPYHI, int, xint, sllong //010100
+MPYHIR, int, xint, int //010000
+MPYIH, int, xint, sllong //010100
+MPYIHR, int, xint, int //010000
+MPYIL, int, xint, sllong //010101
+MPYILR, int, xint, int //001110
+MPYLI, int, xint, sllong //010101
+MPYLIR, int, xint, int //001110
+MPYSPDP, sp, xdp, dp //010110
+MPYSP2DP, sp, xdp, dp //010111
+MPYSU4, s4, xu4, dws4 //000101
+MPYU4, u4m xu4, dwu //000100
+MPYUS4, s4, xu4, dws4 //000101
+MPY2, s2, xs2, ullong //000000
+MPY2IR, int, xint, dint //001111
+MPY32U, uint, xuint, duint //011000
+MPY32US, uint, xuint, dint //011001
+ROTL, uint, xuint, unit //011101
+ROTL, ucst5, xuint, unit //011110
+SMPY2, s2, xs2, sllong //000001
+SSHVL, int, xint, int //011100
+SSHVR, int, xint, int //011010
+
+Munit_3
+CMPY, s2, xs2, dint //001010
+cmpyr, s2, xs2, s2 //001011
+CMPYR1, s2, xs2, s2 //001100
+DDOTP4, ds2, xs4, dint //011000
+DDOTPH2, ds2, xs4, dint //010111
+DDOTPH2R, ds2, xs4, s2 //010101
+DDOTPL2, ds2, xs2, dint //010110
+DDOTPL2R, ds2, xs2, s2 //010100
+GMPY, uint, uint, uint //011111
+SMPY32, int, xint, int //011001
+XORMPY, uint, xuint, uint //011011
+
+Dunit_2
+add, sint, xsint, sint //101010
+add, scst5, xsint, sint //101011
+ADD2, i2, xi2, i2 //100100
+AND, uint, xuint, uint //100110
+AND, scst5, xuint, uint //100111
+ANDN, uint, xuint, uint //100000
+mv, none, sint, sint //100011
+not, noen, xuint, uint //101111
+or, uint, xuint, uint //100010
+or, scst5, xuint, uint //100011
+sub, sint, xsint, sint //101100
+sub2, i2, xi2, i2 //100101
+xor, uint, xuint, uint //101110
+xor, scst5, xuint, uint //101111
+zero, none, none, sint //101100 pseudo
+
+Sunit_5
+sadd2, s2, xs2, s2 //110000
+saddsu2, u2, xs2, u2 //110001
+spack2, int, xint, s2 //110010
+saddu4, u4, xu4, u4 //110011
+spacku4, s2, xs2, u4 //110100
+null, none, none, none //110101
+andn, uint, xuint, uint //110110
+shr2, uint, xs2, s2 //110111
+shru2, uint, xu2, u2 //111000
+shlmb, u4, xu4, u4 //111001
+shrmb, u4, xu4, u4 //111010
+dmv, sint, xsint, dint //111011
+min2, s2, xs2, s2 //111100
+max2, s2, xs2, s2 //111101
+null, none, none, none //111110
+pack2, i2, xi2, i2 //111111
