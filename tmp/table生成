@@ -1,29 +1,51 @@
-	Dunit_1,    //0:  7-12 10000
-	Dunit_2,    //1:  0 6-9 1100
-	Dunit_3,    //2:  4-6 11
-	Dunit_4,    //3:  4-6 01
-	Dunit_5,    //4:  4-6 11
-	Dunit_6,    //5:  4-6 01
-	Dunit_7,    //6:  4-6 01
-	Lunit_1,    //7:  5-11 110
-	Lunit_2,    //8:  13-17 
-	Lunit_3,    //9:  5-11 110
-	Munit_1,    //10: 6-10 1100
-	Munit_2,    //11: 13-17
-	Munit_3,    //12: 6-10 1100
-    Munit_4,    //13: 7-11 00000
-	Sunit_1,    //14: 6-11 1000
-	Sunit_2,    //15: 5-11 110
-	Sunit_5,	//18: 1 6-9 1100
-    Sunit_14,   //27: 1 6-9 1100
-    Sunit_15,   //28: 13-17
-	Sunit_16,   //29: 6-7 0010
+	.Dunit_1,    //0:        7-12   10000
+	.Dunit_2,    //1:  0     6-9    1100
+	Dunit_3,     //2:        4-6    11
+	Dunit_4,     //3:        4-6    01
+	Dunit_5,     //4:        4-6    11
+	Dunit_6,     //5:        4-6    01
+	Dunit_7,     //6:        4-6    01
+	.Lunit_1,    //7:        5-11   110
+	.Lunit_2,    //8:       13-17   0011010110
+	.Lunit_3,    //9:        5-11   110
+	.Munit_1,    //10:       6-10   1100
+	.Munit_2,    //11:      13-17   0000111100
+	.Munit_3,    //12:       6-10   1100
+    .Munit_4,    //13:       7-11   00000
+	.Sunit_1,    //14:       6-11   1000
+	.Sunit_2,    //15:       5-11   110
+	.Sunit_5,	 //18: 1     6-9    1100
+    .Sunit_14,   //27: 1     6-9    1100
+    Sunit_15,    //28:      13-17   1111001000
+	Sunit_16,    //29:       6-7    0010
 
-.... Dunit_2,    //1:  10 6-9 1100 [15]
-.... Munit_1,    //10: 0 6-10 1100 [34]
-0001 Munit_3,    //12: 0 6-10 1100 [11]
-.... Sunit_5,	 //18: 11 6-9 1100 [14]
-0001 Sunit_14,   //27: 11 6-9 1100 [1]
+.... Dunit_2,    //: 10 6-9 1100 [15]
+.... Munit_1,    //: 0 6-10 1100 [34]
+.... Muint_2,    //: 000011 1100
+0001 Munit_3,    //: 0 6-10 1100 [11]
+.... Sunit_5,	 //: 11 6-9 1100 [14]
+0001 Sunit_14,   //: 11 6-9 1100 [1]
+
+"0001........................11..", Dunit_3
+"0001.......................110..", Lunit_3
+"0001................0.....1100..", Munit_3
+"0001.....................00100..", Sunit_12
+"0001................11....1100..", Sunit_14
+"0001..........0....00000000000..", Nunit_1
+
+Dunit_3
+addab, b14, ucst15, uint //011
+addah, b14, ucst15, uint //101
+addaw, b14, ucst15, uint //111
+
+Luint_3
+addsub, sint, xsint, dint //0001100
+addsub, sint, xsint, dint //0001101
+saddsub, sint, xsint, dint //0001110
+saddsub2, sint, xsint, dint //0001111
+shfl3, sint, xsint, dint //0110110
+dpack2, sint, xsint, dint //0110100
+dpackx2, sint, xsint, dint //0110011
 
 Sunit_14
 RPACK2, sint, xsint, s2 //111011
@@ -50,16 +72,16 @@ MPYILR, int, xint, int //001110
 MPYLI, int, xint, sllong //010101
 MPYLIR, int, xint, int //001110
 MPYSPDP, sp, xdp, dp //010110
-MPYSP2DP, sp, xdp, dp //010111
+MPYSP2DP, sp, xsp, dp //010111
 MPYSU4, s4, xu4, dws4 //000101
-MPYU4, u4m xu4, dwu //000100
+MPYU4, u4, xu4, dwu4 //000100
 MPYUS4, s4, xu4, dws4 //000101
 MPY2, s2, xs2, ullong //000000
 MPY2IR, int, xint, dint //001111
 MPY32U, uint, xuint, duint //011000
 MPY32US, uint, xuint, dint //011001
-ROTL, uint, xuint, unit //011101
-ROTL, ucst5, xuint, unit //011110
+ROTL, uint, xuint, uint //011101
+ROTL, ucst5, xuint, uint //011110
 SMPY2, s2, xs2, sllong //000001
 SSHVL, int, xint, int //011100
 SSHVR, int, xint, int //011010
@@ -85,7 +107,7 @@ AND, uint, xuint, uint //100110
 AND, scst5, xuint, uint //100111
 ANDN, uint, xuint, uint //100000
 mv, none, sint, sint //100011
-not, noen, xuint, uint //101111
+not, none, xuint, uint //101111
 or, uint, xuint, uint //100010
 or, scst5, xuint, uint //100011
 sub, sint, xsint, sint //101100
@@ -111,3 +133,11 @@ min2, s2, xs2, s2 //111100
 max2, s2, xs2, s2 //111101
 null, none, none, none //111110
 pack2, i2, xi2, i2 //111111
+
+Muint_2
+bitc4, none, xu4, u4 //11110
+bitr, none, xuint, uint //11111
+deal, none, xuint, uint //11101
+mvd, none, xint, int //11010
+shfl, none, xuint, uint //11100
+xpnd2, none, xuint, uint //11001

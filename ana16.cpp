@@ -193,11 +193,11 @@ static void make_stgcyc(op_t* op, int32 v)
 	op->reg = v;
 }
 
-static void make_near(op_t* op, uint32_t fp_start, int32 v)
+static void make_near(op_t* op, uint32_t fp_start, int32 v, int shift = 1)
 {
 	op->type = o_near;
 	op->dtype = dt_code;
-	op->addr = fp_start + (v << 1);
+	op->addr = fp_start + (v << shift);
 }
 
 static int get_reg(int32 v, bool is_other, bool is_high)
@@ -725,7 +725,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		return 2;
 	case TMSC6L_Scs10:
 		offset = bits_scst(code, 6, 10);
-		make_near(&insn->Op1, fph->adr - 28, offset);
+		make_near(&insn->Op1, fph->adr - 28, offset, 2);
 		make_reg(&insn->Op2, 3, bits_check(code, 0), false);//A3 or B3
 		insn->itype = TMS6_callp;
 		insn->size = 2;
