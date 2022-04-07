@@ -19,12 +19,10 @@
 //---------------------------------
 // Operand types:
 // 新增的操作数类型、ana中需要为op_t设置该值
-#define o_regpair       o_idpspec0      // Register pair (A1:A0..B15:B14)
-                                        // Register pair is denoted by its
-                                        // even register in op.reg
-                                        // (Odd register keeps MSB)
-#define o_spmask        o_idpspec1      // unit mask (reg)
-#define o_stgcyc        o_idpspec2      // fstg/fcyc (value)
+#define o_regpair       o_idpspec0       // 64bits Register pair (A1:A0 B1:B0)
+#define o_regqpair      o_idpspec1      // 128bits Register pair (A3:A2:A1:A0 B3:B2:B1:B0)
+#define o_spmask        o_idpspec2      // unit mask (reg)
+#define o_stgcyc        o_idpspec3      // fstg/fcyc (value)
 
 // o_phrase: the second register is held in secreg (specflag1)
 // baseR[offsetR]寻址方式中用于保存offsetR的值

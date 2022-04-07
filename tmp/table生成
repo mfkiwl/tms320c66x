@@ -77,7 +77,7 @@ MPYSU4, s4, xu4, dws4 //000101
 MPYU4, u4, xu4, dwu4 //000100
 MPYUS4, s4, xu4, dws4 //000101
 MPY2, s2, xs2, ullong //000000
-MPY2IR, int, xint, dint //001111
+fmpydp, dwop1, xdwop2, dwdst //001111
 MPY32U, uint, xuint, duint //011000
 MPY32US, uint, xuint, dint //011001
 ROTL, uint, xuint, uint //011101

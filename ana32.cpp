@@ -167,13 +167,19 @@ enum TMSC66X_OPCODE_TYPE
     t_int,
     t_xint,
     //new in c66x
-    t_xop,
+    t_op1,
+    t_op2,
+    t_xop, 
+    t_xop1,
+    t_xop2,
     t_dst,
-    t_dwop1,
-    t_qwop2,
-    t_xdwop1,
-    t_xdwop2,,
     t_dwdst,
+    t_dwop1,
+    t_xdwop,
+    t_xdwop1,
+    t_xdwop2,
+    t_qwop1,
+    t_qwop2,
     t_qwdst
 };
 
@@ -207,25 +213,21 @@ static void make_reg(op_t* op, int32 v, bool isother)
     op->dtype = dt_dword;
 }
 
-static void make_regpair(op_t* op, int32 v, bool isother)
+static void make_regpair(op_t* op, int32 v, bool isother, bool is_quad)
 {
     v &= ~1;
     if (isother)
         v += rB0;
-    op->type = o_regpair;
+    op->type = is_quad?o_regqpair:o_regpair;
     op->reg = v;
     op->dtype = dt_qword;
 }
 
-//todo: 代码逻辑错误
-static void make_near(op_t* op, int32 v, fetch_packet_t *fp)
+static void make_near(op_t* op, uint32_t fp_start, int32 v, int shift = 1)
 {
     op->type = o_near;
     op->dtype = dt_code;
-    if (fp != NULL && fp->fph_vaild)
-        op->addr = fp->start + (v << 1);
-    else
-        op->addr = fp->start + (v << 2);
+    op->addr = fp_start + (v << shift);
 }
 
 struct tms_reginfo_t
@@ -283,7 +285,7 @@ static int make_op(
     uint32 code,
     uchar optype,
     int32 v,
-    bool isother,
+    bool is_Aside,
     fetch_packet_t* fp)
 {
     switch (optype)
@@ -302,8 +304,6 @@ static int make_op(
     case t_int:
     case t_bv2:
     case t_bv4:
-        isother = false;
-        // no break
     case t_xs2:
     case t_xu2:
     case t_xi2:
@@ -314,19 +314,20 @@ static int make_op(
     case t_xuint:
     case t_xint:
     case t_xop:
-        make_reg(&x, v, isother);
-        break;
+    case t_xop1:
+    case t_xop2:
+    case t_dst:
+    case t_op1:
+    case t_op2:
     case t_slsb16:
     case t_ulsb16:
     case t_smsb16:
     case t_umsb16:
-        isother = false;
-        // no break
     case t_xslsb16:
     case t_xulsb16:
     case t_xsmsb16:
     case t_xumsb16:
-        make_reg(&x, v, isother);
+        make_reg(&x, v, is_Aside);
         break;
     case t_dint:
     case t_slong:
@@ -335,24 +336,28 @@ static int make_op(
     case t_ullong:
     case t_dws4:
     case t_dwu4:
-        isother = false;
-        // no break
     case t_xslong:
     case t_xulong:
-        make_regpair(&x, v, isother);
+    case t_dwdst:
+    case t_dwop1:
+    case t_xdwop:
+    case t_xdwop1:
+    case t_xdwop2:
+        make_regpair(&x, v, is_Aside, false);
+        break;
+    case t_qwop1:
+    case t_qwop2:
+    case t_qwdst:
+        make_regpair(&x, v, is_Aside, true);
         break;
     case t_sp:
-        isother = false;
-        // no break
     case t_xsp:
-        make_reg(&x, v, isother);
+        make_reg(&x, v, is_Aside);
         x.dtype = dt_float;
         break;
     case t_dp:
-        isother = false;
-        // no break
     case t_xdp:
-        make_regpair(&x, v, isother);
+        make_regpair(&x, v, is_Aside, false);
         x.dtype = dt_double;
         break;
     case t_ucst1:
@@ -370,16 +375,16 @@ static int make_op(
         make_imm(&x, bits_ucst(code, 13, 3));
         break;
     case t_scst7:
-        make_near(&x, bits_scst(code, 16, 7), NULL);
+        make_near(&x, fp->start, bits_scst(code, 16, 7), 2);
         break;
     case t_scst10:
-        make_near(&x, bits_scst(code, 13, 10), NULL);
+        make_near(&x, fp->start, bits_scst(code, 13, 10), 2);
         break;
     case t_scst12:
-        make_near(&x, bits_scst(code, 16, 12), fp);
+        make_near(&x, fp->start, bits_scst(code, 16, 12), fp->fph_vaild ? 1 : 2);
         break;
     case t_scst21:
-        make_near(&x, bits_scst(code, 7, 21), NULL);
+        make_near(&x, fp->start, bits_scst(code, 7, 21), 2);
         break;
     case t_irp:
         x.type = o_reg;
@@ -417,9 +422,10 @@ static int make_op(
         make_reg(&x, rB14 + bits_ucst(code, 7, 1), false);
         break;
     case t_a3:
-        make_reg(&x, rA3, isother);
+        make_reg(&x, rA3, is_Aside);
         break;
     default:
+        msg("[+]DEBUG: unknown opcode type %d\n", optype);
         INTERR(257);
     }
     return true;
@@ -430,7 +436,7 @@ static int table_insns(
 	insn_t& insn,
 	uint32 code,
 	const tmsinsn_t* tinsn,
-	bool isother,
+	bool cross_path,
     fetch_packet_t* fp)
 {
 	// +------------------------------------------...
@@ -441,14 +447,14 @@ static int table_insns(
 	if (tinsn->itype == TMS6_null)
 		return 0;
 	insn.itype = tinsn->itype;
-	if (isother)
+	if (cross_path)
 		insn.cflags |= aux_xp;  // xpath is used
 	op_t* xptr = &insn.Op1;
 	if (!make_op(insn, *xptr, code, tinsn->src1, bits_ucst(code, 13, 5), bits_check(code, 1), fp))
 		return 0;
 	if (xptr->type != o_void)
 		xptr++;
-	if (!make_op(insn, *xptr, code, tinsn->src2, bits_ucst(code, 18, 5), bits_ucst(code, 12, 1) != bits_ucst(code, 1, 1), fp))
+	if (!make_op(insn, *xptr, code, tinsn->src2, bits_ucst(code, 18, 5), cross_path != bits_ucst(code, 1, 1), fp))
 		return 0;
 	if (xptr->type != o_void)
 		xptr++;
@@ -467,70 +473,70 @@ static int table_insns(
 static tmsinsn_t dms_ops[64] =
 {
                                            //BIT 11....6
-    { TMS6_mpy2, t_s2, t_xs2, t_ullong },       //000000
-    { TMS6_smpy2, t_s2, t_xs2, t_sllong },      //000001
-    { TMS6_dotpsu4, t_s4, t_xu4, t_int },       //000010
-    { TMS6_null, t_none, t_none, t_none },      //000011
-    { TMS6_mpyu4, t_u4, t_xu4, t_dwu4 },        //000100
-    { TMS6_mpysu4, t_s4, t_xu4, t_dws4 },       //000101
-    { TMS6_dotpu4, t_s4, t_xu4, t_int },        //000110
-    { TMS6_dotpnrsu2, t_s2, t_xu2, t_int },     //000111
-    { TMS6_null, t_none, t_none, t_none },      //001000
-    { TMS6_dotpn2, t_s2, t_xs2, t_sllong },     //001001
-    { TMS6_null, t_none, t_none, t_none },      //001010
-    { TMS6_null, t_none, t_none, t_none },      //001011
-    { TMS6_dotp2, t_s2, t_xs2, t_int },         //001100
-    { TMS6_dotprsu2, t_s2, t_xu2, t_int },      //001101
-    { TMS6_mpyilr, t_int, t_xint, t_int },      //001110
-    { TMS6_mpy2ir, t_int, t_xint, t_dint },     //001111
-    { TMS6_mpyhir, t_int, t_xint, t_int },      //010000
-    { TMS6_gmpy4, t_s4, t_xu4, t_u4 },          //010001
-    { TMS6_avgu4, t_u4, t_xu4, t_u4 },          //010010
-    { TMS6_avg2, t_s2, t_xs2, t_s2 },           //010011
-    { TMS6_mpyhi, t_int, t_xint, t_sllong },    //010100
-    { TMS6_mpyil, t_int, t_xint, t_sllong },    //010101
-    { TMS6_mpyspdp, t_sp, t_xdp, t_dp },        //010110
-    { TMS6_mpysp2dp, t_sp, t_xsp, t_dp },       //010111
-    { TMS6_mpy32u, t_uint, t_xuint, t_duint },  //011000
-    { TMS6_mpy32us, t_uint, t_xuint, t_dint },  //011001
-    { TMS6_sshvr, t_int, t_xint, t_int },       //011010
-    { TMS6_null, t_none, t_none, t_none },      //011011
-    { TMS6_sshvl, t_int, t_xint, t_int },       //011100
-    { TMS6_rotl, t_uint, t_xuint, t_uint },     //011101
-    { TMS6_rotl, t_ucst5, t_xuint, t_uint },    //011110
-    { TMS6_null, t_none, t_none, t_none },      //011111
-    { TMS6_andn, t_uint, t_xuint, t_uint },     //100000
-    { TMS6_null, t_none, t_none, t_none },      //100001
-    { TMS6_or, t_uint, t_xuint, t_uint },       //100010
-    { TMS6_mv, t_none, t_sint, t_sint },        //100011
-    { TMS6_add2, t_i2, t_xi2, t_i2 },           //100100
-    { TMS6_sub2, t_i2, t_xi2, t_i2 },           //100101
-    { TMS6_and, t_uint, t_xuint, t_uint },      //100110
-    { TMS6_and, t_scst5, t_xuint, t_uint },     //100111
-    { TMS6_null, t_none, t_none, t_none },      //101000
-    { TMS6_null, t_none, t_none, t_none },      //101001
-    { TMS6_add, t_sint, t_xsint, t_sint },      //101010
-    { TMS6_add, t_scst5, t_xsint, t_sint },     //101011
-    { TMS6_sub, t_sint, t_xsint, t_sint },      //101100
-    { TMS6_null, t_none, t_none, t_none },      //101101
-    { TMS6_xor, t_uint, t_xuint, t_uint },      //101110
-    { TMS6_not, t_none, t_xuint, t_uint },      //101111
-    { TMS6_sadd2, t_s2, t_xs2, t_s2 },          //110000
-    { TMS6_saddsu2, t_u2, t_xs2, t_u2 },        //110001
-    { TMS6_spack2, t_int, t_xint, t_s2 },       //110010
-    { TMS6_saddu4, t_u4, t_xu4, t_u4 },         //110011
-    { TMS6_spacku4, t_s2, t_xs2, t_u4 },        //110100
-    { TMS6_null, t_none, t_none, t_none },      //110101
-    { TMS6_andn, t_uint, t_xuint, t_uint },     //110110
-    { TMS6_shr2, t_uint, t_xs2, t_s2 },         //110111
-    { TMS6_shru2, t_uint, t_xu2, t_u2 },        //111000
-    { TMS6_shlmb, t_u4, t_xu4, t_u4 },          //111001
-    { TMS6_shrmb, t_u4, t_xu4, t_u4 },          //111010
-    { TMS6_dmv, t_sint, t_xsint, t_dint },      //111011
-    { TMS6_min2, t_s2, t_xs2, t_s2 },           //111100
-    { TMS6_max2, t_s2, t_xs2, t_s2 },           //111101
-    { TMS6_null, t_none, t_none, t_none },      //111110
-    { TMS6_pack2, t_i2, t_xi2, t_i2 },          //111111
+    { TMS6_mpy2, t_s2, t_xs2, t_ullong },           //000000
+    { TMS6_smpy2, t_s2, t_xs2, t_sllong },          //000001
+    { TMS6_dotpsu4, t_s4, t_xu4, t_int },           //000010    same as dotpsu4h
+    { TMS6_null, t_none, t_none, t_none },          //000011
+    { TMS6_mpyu4, t_u4, t_xu4, t_dwu4 },            //000100
+    { TMS6_mpysu4, t_s4, t_xu4, t_dws4 },           //000101    same as dotpsu4h
+    { TMS6_dotpu4, t_s4, t_xu4, t_int },            //000110    same as dotp4h
+    { TMS6_dotpnrsu2, t_s2, t_xu2, t_int },         //000111    same as dotp4h
+    { TMS6_mpyu2, t_op1, t_xop2, t_dwdst },         //001000
+    { TMS6_dotpn2, t_s2, t_xs2, t_sllong },         //001001
+    { TMS6_null, t_none, t_none, t_none },          //001010
+    { TMS6_null, t_none, t_none, t_none },          //001011
+    { TMS6_dotp2, t_s2, t_xs2, t_int },             //001100
+    { TMS6_dotprsu2, t_s2, t_xu2, t_int },          //001101
+    { TMS6_mpyilr, t_int, t_xint, t_int },          //001110
+    { TMS6_fmpydp, t_dwop1, t_xdwop2, t_dwdst},     //001111
+    { TMS6_mpyhir, t_int, t_xint, t_int },          //010000
+    { TMS6_gmpy4, t_s4, t_xu4, t_u4 },              //010001
+    { TMS6_avgu4, t_u4, t_xu4, t_u4 },              //010010
+    { TMS6_avg2, t_s2, t_xs2, t_s2 },               //010011
+    { TMS6_mpyhi, t_int, t_xint, t_sllong },        //010100
+    { TMS6_mpyil, t_int, t_xint, t_sllong },        //010101
+    { TMS6_mpyspdp, t_sp, t_xdp, t_dp },            //010110
+    { TMS6_mpysp2dp, t_sp, t_xsp, t_dp },           //010111
+    { TMS6_mpy32u, t_uint, t_xuint, t_duint },      //011000
+    { TMS6_mpy32us, t_uint, t_xuint, t_dint },      //011001
+    { TMS6_sshvr, t_int, t_xint, t_int },           //011010
+    { TMS6_null, t_none, t_none, t_none },          //011011
+    { TMS6_sshvl, t_int, t_xint, t_int },           //011100
+    { TMS6_rotl, t_uint, t_xuint, t_uint },         //011101
+    { TMS6_rotl, t_ucst5, t_xuint, t_uint },        //011110
+    { TMS6_null, t_none, t_none, t_none },          //011111
+    { TMS6_andn, t_uint, t_xuint, t_uint },         //100000
+    { TMS6_null, t_none, t_none, t_none },          //100001
+    { TMS6_or, t_uint, t_xuint, t_uint },           //100010
+    { TMS6_mv, t_none, t_sint, t_sint },            //100011
+    { TMS6_add2, t_i2, t_xi2, t_i2 },               //100100
+    { TMS6_sub2, t_i2, t_xi2, t_i2 },               //100101
+    { TMS6_and, t_uint, t_xuint, t_uint },          //100110
+    { TMS6_and, t_scst5, t_xuint, t_uint },         //100111
+    { TMS6_null, t_none, t_none, t_none },          //101000
+    { TMS6_null, t_none, t_none, t_none },          //101001
+    { TMS6_add, t_sint, t_xsint, t_sint },          //101010
+    { TMS6_add, t_scst5, t_xsint, t_sint },         //101011
+    { TMS6_sub, t_sint, t_xsint, t_sint },          //101100
+    { TMS6_null, t_none, t_none, t_none },          //101101
+    { TMS6_xor, t_uint, t_xuint, t_uint },          //101110
+    { TMS6_not, t_none, t_xuint, t_uint },          //101111
+    { TMS6_sadd2, t_s2, t_xs2, t_s2 },              //110000
+    { TMS6_saddsu2, t_u2, t_xs2, t_u2 },            //110001
+    { TMS6_spack2, t_int, t_xint, t_s2 },           //110010
+    { TMS6_saddu4, t_u4, t_xu4, t_u4 },             //110011
+    { TMS6_spacku4, t_s2, t_xs2, t_u4 },            //110100
+    { TMS6_null, t_none, t_none, t_none },          //110101
+    { TMS6_andn, t_uint, t_xuint, t_uint },         //110110
+    { TMS6_shr2, t_uint, t_xs2, t_s2 },             //110111
+    { TMS6_shru2, t_uint, t_xu2, t_u2 },            //111000
+    { TMS6_shlmb, t_u4, t_xu4, t_u4 },              //111001
+    { TMS6_shrmb, t_u4, t_xu4, t_u4 },              //111010
+    { TMS6_dmv, t_sint, t_xsint, t_dint },          //111011
+    { TMS6_min2, t_s2, t_xs2, t_s2 },               //111100
+    { TMS6_max2, t_s2, t_xs2, t_s2 },               //111101
+    { TMS6_fsubdp, t_dwop1, t_xdwop2, t_dwdst },    //111110
+    { TMS6_pack2, t_i2, t_xi2, t_i2 },              //111111
 };
 
 /*
@@ -553,7 +559,7 @@ static const tmsinsn_t sunit1_ops[64] =
   { TMS6_packh2, t_i2,          t_xi2,          t_i2            }, // 00 1000
   { TMS6_xor,    t_scst5,       t_xuint,        t_uint          }, // 00 1010
   { TMS6_xor,    t_uint,        t_xuint,        t_uint          }, // 00 1011
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 00 1100
+  { TMS6_fadddp, t_dwop1,       t_xdwop2,       t_dwdst         }, // 00 1100
   { TMS6_b,      t_none,        t_xuint,        t_none          }, // 00 1101
   { TMS6_mvc,    t_none,        t_xuint,        t_cregw         }, // 00 1110
   { TMS6_mvc,    t_none,        t_cregr,        t_uint          }, // 00 1111
@@ -605,6 +611,49 @@ static const tmsinsn_t sunit1_ops[64] =
   { TMS6_rcpsp,  t_none,        t_xsp,          t_sp            }, // 11 1101
   { TMS6_rsqrsp, t_none,        t_xsp,          t_sp            }, // 11 1110
   { TMS6_clr,    t_uint,        t_xuint,        t_uint          }, // 11 1111
+};
+
+/*
+* 符合该格式的有Sunit_15
+*    | 31 29 | 28 | 27 23 | 22 18 | 17 13 | 12 | 11                 2 | 1 0 |
+*    |  creg |  z |  dst  |  src2 |   op  |  x |  1 1 1 1 0 0 1 0 0 0 | s p |
+*    |   3   |  1 |   5   |   5   |   5   |  1 |                      | 1 1 |
+*/
+static const tmsinsn_t sunit15_ops[32] =
+{
+                                          //BIT 17...13
+    { TMS6_null, t_none, t_none, t_none },      //00000
+    { TMS6_null, t_none, t_none, t_none },      //00001
+    { TMS6_unpklu4, t_none, t_xu4, t_u2 },      //00010
+    { TMS6_unpkhu4, t_none, t_xu4, t_u2 },      //00011
+    { TMS6_null, t_none, t_none, t_none },      //00100
+    { TMS6_null, t_none, t_none, t_none },      //00101
+    { TMS6_unpkhu2, t_none, t_xop, t_dwdst },   //00110
+    { TMS6_unpkh2, t_none, t_xop, t_dwdst },    //00111
+    { TMS6_unpkbu4, t_none, t_xop, t_dwdst },   //01000
+    { TMS6_null, t_none, t_none, t_none },      //01001
+    { TMS6_null, t_none, t_none, t_none },      //01010
+    { TMS6_null, t_none, t_none, t_none },      //01011
+    { TMS6_null, t_none, t_none, t_none },      //01100
+    { TMS6_null, t_none, t_none, t_none },      //01101
+    { TMS6_null, t_none, t_none, t_none },      //01110
+    { TMS6_null, t_none, t_none, t_none },      //01111
+    { TMS6_dspinth, t_none, t_xdwop, t_dwdst }, //10000
+    { TMS6_dintspu, t_none, t_xop, t_dwdst },   //10001
+    { TMS6_dinthsp, t_none, t_xop, t_dwdst },   //10010
+    { TMS6_dinthspu,t_none, t_xop, t_dwdst },   //10011
+    { TMS6_dspint, t_none, t_xdwop, t_dwdst },  //10100
+    { TMS6_null, t_none, t_none, t_none },      //10101
+    { TMS6_null, t_none, t_none, t_none },      //10110
+    { TMS6_null, t_none, t_none, t_none },      //10111
+    { TMS6_null, t_none, t_none, t_none },      //11000
+    { TMS6_null, t_none, t_none, t_none },      //11001
+    { TMS6_null, t_none, t_none, t_none },      //11010
+    { TMS6_null, t_none, t_none, t_none },      //11011
+    { TMS6_null, t_none, t_none, t_none },      //11100
+    { TMS6_null, t_none, t_none, t_none },      //11101
+    { TMS6_null, t_none, t_none, t_none },      //11110
+    { TMS6_null, t_none, t_none, t_none },      //11111
 };
 
 /*
@@ -690,34 +739,34 @@ static const tmsinsn_t dunit1_ops[64] =
 static const tmsinsn_t muint2_ops[32] =
 {
                                             //BIT 17...13
-    { TMS6_null, t_none, t_none, t_none },      //000000
-    { TMS6_null, t_none, t_none, t_none },      //000001
-    { TMS6_null, t_none, t_none, t_none },      //000010
-    { TMS6_null, t_none, t_none, t_none },      //000011
-    { TMS6_null, t_none, t_none, t_none },      //000100
-    { TMS6_null, t_none, t_none, t_none },      //000101
-    { TMS6_null, t_none, t_none, t_none },      //000110
-    { TMS6_null, t_none, t_none, t_none },      //000111
-    { TMS6_null, t_none, t_none, t_none },      //001000
-    { TMS6_null, t_none, t_none, t_none },      //001001
-    { TMS6_null, t_none, t_none, t_none },      //001010
-    { TMS6_null, t_none, t_none, t_none },      //001011
-    { TMS6_null, t_none, t_none, t_none },      //001100
-    { TMS6_null, t_none, t_none, t_none },      //001101
-    { TMS6_null, t_none, t_none, t_none },      //001110
-    { TMS6_null, t_none, t_none, t_none },      //001111
-    { TMS6_null, t_none, t_none, t_none },      //010000
-    { TMS6_null, t_none, t_none, t_none },      //010001
-    { TMS6_null, t_none, t_none, t_none },      //010010
-    { TMS6_null, t_none, t_none, t_none },      //010011
-    { TMS6_null, t_none, t_none, t_none },      //010100
-    { TMS6_null, t_none, t_none, t_none },      //010101
-    { TMS6_null, t_none, t_none, t_none },      //010110
-    { TMS6_null, t_none, t_none, t_none },      //010111
-    { TMS6_null, t_none, t_none, t_none },      //011000
+    { TMS6_null, t_none, t_none, t_none },      //00000
+    { TMS6_null, t_none, t_none, t_none },      //00001
+    { TMS6_null, t_none, t_none, t_none },      //00010
+    { TMS6_null, t_none, t_none, t_none },      //00011
+    { TMS6_null, t_none, t_none, t_none },      //00100
+    { TMS6_null, t_none, t_none, t_none },      //00101
+    { TMS6_null, t_none, t_none, t_none },      //00110
+    { TMS6_null, t_none, t_none, t_none },      //00111
+    { TMS6_null, t_none, t_none, t_none },      //01000
+    { TMS6_null, t_none, t_none, t_none },      //01001
+    { TMS6_null, t_none, t_none, t_none },      //01010
+    { TMS6_null, t_none, t_none, t_none },      //01011
+    { TMS6_null, t_none, t_none, t_none },      //01100
+    { TMS6_null, t_none, t_none, t_none },      //01101
+    { TMS6_null, t_none, t_none, t_none },      //01110
+    { TMS6_null, t_none, t_none, t_none },      //01111
+    { TMS6_dxpnd4,t_none, t_xop, t_dwdst},      //10000
+    { TMS6_dxpnd2,t_none, t_xop, t_dwdst},      //10001
+    { TMS6_null, t_none, t_none, t_none },      //10010
+    { TMS6_null, t_none, t_none, t_none },      //10011
+    { TMS6_null, t_none, t_none, t_none },      //10100
+    { TMS6_null, t_none, t_none, t_none },      //10101
+    { TMS6_null, t_none, t_none, t_none },      //10110
+    { TMS6_null, t_none, t_none, t_none },      //10111
+    { TMS6_null, t_none, t_none, t_none },      //11000
     { TMS6_xpnd2, t_none, t_xuint, t_uint },    //11001
     { TMS6_mvd, t_none, t_xint, t_int },        //11010
-    { TMS6_null, t_none, t_none, t_none },      //011011
+    { TMS6_null, t_none, t_none, t_none },      //11011
     { TMS6_shfl, t_none, t_xuint, t_uint },     //11100
     { TMS6_deal, t_none, t_xuint, t_uint },     //11101
     { TMS6_bitc4, t_none, t_xu4, t_u4 },        //11110
@@ -727,7 +776,7 @@ static const tmsinsn_t muint2_ops[32] =
 /*
 * 符合该格式的有Munit_4
 *    | 31 29 | 28 | 27 23 | 22 18 | 17 13 | 12 |  11  7 | 6 5 4 3 2 | 1 0 |
-*    |  creg |  z |  dst  |  src2 |   op  |  x |   op   | 0 0 0 0 0 | s p |
+*    |  creg |  z |  dst  |  src2 |  sr1  |  x |   op   | 0 0 0 0 0 | s p |
 *    |   3   |  1 |   5   |   5   |   5   |  1 |    5   |           | 1 1 |
 */
 static const tmsinsn_t muint4_ops[32] =
@@ -767,12 +816,12 @@ static const tmsinsn_t muint4_ops[32] =
 };
 
 /*
-* 符合该格式的有Lunit_1
+* 符合该格式的有Lunit_1、Sunit_2
 *    | 31 29 | 28 | 27 23 | 22 18 | 17 13 | 12 |  11  5 | 4 3 2 | 1 0 |
 *    |  creg |  z |  dst  |  src2 |  src1 |  x |   op   | 1 1 0 | s p |
 *    |   3   |  1 |   5   |   5   |   5   |  1 |    7   |       | 1 1 |
 */
-static const tmsinsn_t lunit1_ops[128] =
+static const tmsinsn_t lsunit_ops[128] =
 {                                                                // bits 11..5
   { TMS6_pack2,  t_i2,          t_xi2,          t_i2            }, // 000 0000
   { TMS6_dptrunc,t_none,        t_dp,           t_sint          }, // 000 0001
@@ -835,7 +884,7 @@ static const tmsinsn_t lunit1_ops[128] =
   { TMS6_null,   t_none,        t_none,         t_none          }, // 011 1010
   { TMS6_intdpu, t_none,        t_xuint,        t_dp            }, // 011 1011
   { TMS6_null,   t_none,        t_none,         t_none          }, // 011 1100
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 011 1101
+  { TMS6_fsubsp, t_op1,         t_xop2,         t_dst           }, // 011 1101
   { TMS6_null,   t_none,        t_none,         t_none          }, // 011 1110
   { TMS6_subu,   t_xuint,       t_uint,         t_ulong         }, // 011 1111
   { TMS6_sat,    t_none,        t_slong,        t_sint          }, // 100 0000
@@ -865,8 +914,8 @@ static const tmsinsn_t lunit1_ops[128] =
   { TMS6_cmplt,  t_xsint,       t_slong,        t_uint          }, // 101 0101
   { TMS6_cmplt,  t_scst5,       t_xsint,        t_uint          }, // 101 0110
   { TMS6_cmplt,  t_sint,        t_xsint,        t_uint          }, // 101 0111
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 101 1000
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 101 1001
+  { TMS6_fadddp, t_dwop1,       t_xdwop2,       t_dwdst         }, // 101 1000
+  { TMS6_fsubdp, t_dwop1,       t_xdwop2,       t_dwdst         }, // 101 1001
   { TMS6_subabs4,t_u4,          t_xu4,          t_u4            }, // 101 1010
   { TMS6_null,   t_none,        t_none,         t_none          }, // 101 1011
   { TMS6_cmpltu, t_ucst5,       t_ulong,        t_uint          }, // 101 1100 // see [1]
@@ -895,16 +944,16 @@ static const tmsinsn_t lunit1_ops[128] =
   { TMS6_subsp,  t_sp,          t_xsp,          t_sp            }, // 111 0001
   { TMS6_adddp,  t_dp,          t_xdp,          t_dp            }, // 111 0010
   { TMS6_subdp,  t_dp,          t_xdp,          t_dp            }, // 111 0011
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 111 0100
+  { TMS6_faddsp, t_op1,         t_xop2,         t_dst           }, // 111 0100
   { TMS6_subsp,  t_xsp,         t_sp,           t_sp            }, // 111 0101
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 111 0110
+  { TMS6_fsubsp, t_op1,         t_xop2,         t_dst           }, // 111 0110
   { TMS6_subdp,  t_xdp,         t_dp,           t_dp            }, // 111 0111
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 111 1000
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 111 1001
+  { TMS6_land,   t_op1,         t_xop2,         t_dst           }, // 111 1000
+  { TMS6_landn,  t_op1,         t_xop2,         t_dst           }, // 111 1001
   { TMS6_and,    t_scst5,       t_xuint,        t_uint          }, // 111 1010
   { TMS6_and,    t_uint,        t_xuint,        t_uint          }, // 111 1011
   { TMS6_andn,   t_uint,        t_xuint,        t_uint          }, // 111 1100
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 111 1101
+  { TMS6_lor,    t_op1,         t_xop2,         t_dst           }, // 111 1101
   { TMS6_or,     t_scst5,       t_xuint,        t_uint          }, // 111 1110
   { TMS6_or,     t_uint,        t_xuint,        t_uint          }, // 111 1111
 };
@@ -923,9 +972,9 @@ static const tmsinsn_t lunit2_ops[32] =
   { TMS6_unpkhu4,t_none,        t_xsint,        t_sint          }, // 0 0011
   { TMS6_abs2,   t_none,        t_xs2,          t_s2            }, // 0 0100
   { TMS6_mvk,    t_none,        t_scst5,        t_sint          }, // 0 0101
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 0 0110
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 0 0111
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 0 1000
+  { TMS6_unpkhu2,t_none,        t_xop,          t_dwdst         }, // 0 0110
+  { TMS6_unpkh2, t_none,        t_xop,          t_dwdst         }, // 0 0111
+  { TMS6_unpkbu4,t_none,        t_xop,          t_dwdst         }, // 0 1000
   { TMS6_crot90, t_none,        t_xop,          t_dst           }, // 0 1001
   { TMS6_crot270,t_none,        t_xop,          t_dst           }, // 0 1010
   { TMS6_null,   t_none,        t_none,         t_none          }, // 0 1011
@@ -933,17 +982,17 @@ static const tmsinsn_t lunit2_ops[32] =
   { TMS6_null,   t_none,        t_none,         t_none          }, // 0 1101
   { TMS6_null,   t_none,        t_none,         t_none          }, // 0 1110
   { TMS6_null,   t_none,        t_none,         t_none          }, // 0 1111
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 1 0000
+  { TMS6_dspinth,t_none,        t_xdwop,        t_dst           }, // 1 0000
   { TMS6_null,   t_none,        t_none,         t_none          }, // 1 0001
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 1 0010
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 1 0011
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 1 0100
+  { TMS6_dinthsp,t_none,        t_xop,          t_dwdst         }, // 1 0010
+  { TMS6_dinthspu,t_none,       t_xop,          t_dwdst         }, // 1 0011
+  { TMS6_dspint, t_none,        t_xdwop,        t_dwdst         }, // 1 0100
   { TMS6_null,   t_none,        t_none,         t_none          }, // 1 0101
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 1 0110
+  { TMS6_dintspu,t_none,        t_xop,          t_dwdst         }, // 1 0110
   { TMS6_null,   t_none,        t_none,         t_none          }, // 1 0111
   { TMS6_null,   t_none,        t_none,         t_none          }, // 1 1000
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 1 1001
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 1 1010
+  { TMS6_dcrot90,t_none,        t_xdwop,        t_dwdst         }, // 1 1001
+  { TMS6_dcrot270,t_none,       t_xdwop,        t_dwdst         }, // 1 1010
   { TMS6_null,   t_none,        t_none,         t_none          }, // 1 1011
   { TMS6_null,   t_none,        t_none,         t_none          }, // 1 1100
   { TMS6_null,   t_none,        t_none,         t_none          }, // 1 1101
@@ -974,10 +1023,41 @@ static const tmsinsn_indexed_t nopreds[] =
   { TMS6_dadd,     t_dwop1,     t_xdwop2,       t_dwdst, 0x78,  0x3FF, FU_S1 },
   { TMS6_dadd2,    t_dwop1,     t_xdwop2,       t_dwdst, 0x18,  0x3FF, FU_S1 },
   { TMS6_daddsp,   t_dwop1,     t_xdwop2,       t_dwdst, 0x1E6, 0x3FF, FU_S1 },
+  { TMS6_dcmpeq2,  t_dwop1,     t_xdwop2,       t_dst,   0x1D8, 0x3FF, FU_S1 },
+  { TMS6_dcmpeq4,  t_dwop1,     t_xdwop2,       t_dst,   0x1C8, 0x3FF, FU_S1 },
+  { TMS6_dcmpgt2,  t_dwop1,     t_xdwop2,       t_dst,   0x148, 0x3FF, FU_S1 },
+  { TMS6_dcmpgtu4, t_dwop1,     t_xdwop2,       t_dst,   0x158, 0x3FF, FU_S1 },
+  { TMS6_dmvd,     t_op1,       t_xop2,         t_dwdst, 0x3C,  0x3FF, FU_S1 },
+  { TMS6_dpackh2,  t_dwop1,     t_xdwop2,       t_dwdst, 0x98,  0x3FF, FU_S1 },
+  { TMS6_dpackhl2, t_dwop1,     t_xdwop2,       t_dwdst, 0x88,  0x3FF, FU_S1 },
+  { TMS6_dpackl2,  t_dwop1,     t_xdwop2,       t_dwdst, 0x3FC, 0x3FF, FU_S1 },
+  { TMS6_dpacklh2, t_dwop1,     t_xdwop2,       t_dwdst, 0x108, 0x3FF, FU_S1 },
+  { TMS6_dsadd,    t_dwop1,     t_xdwop2,       t_dwdst, 0x208, 0x3FF, FU_S1 },
+  { TMS6_dsadd2,   t_dwop1,     t_xdwop2,       t_dwdst, 0x30C, 0x3FF, FU_S1 },
+  { TMS6_dshl,     t_op2,       t_xdwop1,       t_dwdst, 0x338, 0x3FF, FU_S1 },
+  { TMS6_dshl,     t_ucst5,     t_xdwop1,       t_dwdst, 0x328, 0x3FF, FU_S1 },
+  { TMS6_dshl2,    t_op2,       t_xdwop1,       t_dwdst, 0x128, 0x3FF, FU_S1 },
+  { TMS6_dshl2,    t_ucst5,     t_xdwop1,       t_dwdst, 0x68,  0x3FF, FU_S1 },
+  { TMS6_dshr,     t_op2,       t_xdwop1,       t_dwdst, 0x378, 0x3FF, FU_S1 },
+  { TMS6_dshr,     t_ucst5,     t_xdwop1,       t_dwdst, 0x368, 0x3FF, FU_S1 },
+  { TMS6_dshr2,    t_op2,       t_xdwop1,       t_dwdst, 0x37C, 0x3FF, FU_S1 },
+  { TMS6_dshr2,    t_ucst5,     t_xdwop1,       t_dwdst, 0x188, 0x3FF, FU_S1 },
+  { TMS6_dshru,    t_op2,       t_xdwop1,       t_dwdst, 0x278, 0x3FF, FU_S1 },
+  { TMS6_dshru,    t_ucst5,     t_xdwop1,       t_dwdst, 0x268, 0x3FF, FU_S1 },
+  { TMS6_dshru2,   t_op2,       t_xdwop1,       t_dwdst, 0x38C, 0x3FF, FU_S1 },
+  { TMS6_dshru2,   t_ucst5,     t_xdwop1,       t_dwdst, 0x198, 0x3FF, FU_S1 },
+  { TMS6_dspacku4, t_dwop1,     t_xdwop1,       t_dwdst, 0x34C, 0x3FF, FU_S1 },
+  { TMS6_dsub,     t_dwop1,     t_xdwop1,       t_dwdst, 0x178, 0x3FF, FU_S1 },
+  { TMS6_dsub2,    t_dwop1,     t_xdwop1,       t_dwdst, 0x118, 0x3FF, FU_S1 },
+  { TMS6_dsubsp,   t_dwop1,     t_xdwop1,       t_dwdst, 0x2D8, 0x3FF, FU_S1 },
+  { TMS6_shl2,     t_op2,       t_xop1,         t_dst,   0x138, 0x3FF, FU_S1 },
+  { TMS6_shl2,     t_ucst5,     t_xop1,         t_dst,   0x38,  0x3FF, FU_S1 },
+
   { TMS6_addab,    t_b14,       t_ucst15,       t_uint,  0x00F, 0x01F, FU_D1 },
   { TMS6_addad,    t_b14,       t_ucst15,       t_uint,  0x010, 0x01F, FU_D1 },
   { TMS6_addah,    t_b14,       t_ucst15,       t_uint,  0x017, 0x01F, FU_D1 },
   { TMS6_addaw,    t_b14,       t_ucst15,       t_uint,  0x01F, 0x01F, FU_D1 },
+
   { TMS6_addsub,   t_sint,      t_xsint,        t_dint,  0x066, 0x3FF, FU_L1 },
   { TMS6_saddsub,  t_sint,      t_xsint,        t_dint,  0x076, 0x3FF, FU_L1 },
   { TMS6_dpack2,   t_sint,      t_xsint,        t_dint,  0x1A6, 0x3FF, FU_L1 },
@@ -989,6 +1069,26 @@ static const tmsinsn_indexed_t nopreds[] =
   { TMS6_dadd,     t_dwop1,     t_xdwop2,       t_dwdst, 0x2E,  0x3FF, FU_L1 },
   { TMS6_daddsp,   t_dwop1,     t_xdwop2,       t_dwdst, 0x2C8, 0x3FF, FU_L1 },
   { TMS6_dapys2,   t_dwop1,     t_xdwop2,       t_dwdst, 0x1C6, 0x3FF, FU_L1 },
+  { TMS6_dmax2,    t_dwop1,     t_xdwop2,       t_dwdst, 0x216, 0x3FF, FU_L1 },
+  { TMS6_dmaxu4,   t_dwop1,     t_xdwop2,       t_dwdst, 0x21E, 0x3FF, FU_L1 },
+  { TMS6_dmin2,    t_dwop1,     t_xdwop2,       t_dwdst, 0x20E, 0x3FF, FU_L1 },
+  { TMS6_dminu4,   t_dwop1,     t_xdwop2,       t_dwdst, 0x246, 0x3FF, FU_L1 },
+  { TMS6_dmvd,     t_op1,       t_xop2,         t_dwdst, 0x366, 0x3FF, FU_L1 },
+  { TMS6_dpackh2,  t_dwop1,     t_xdwop2,       t_dwdst, 0xF6,  0x3FF, FU_L1 },
+  { TMS6_dpackh4,  t_dwop1,     t_xdwop2,       t_dwdst, 0x34E, 0x3FF, FU_L1 },
+  { TMS6_dpackhl2, t_dwop1,     t_xdwop2,       t_dwdst, 0xE6,  0x3FF, FU_L1 },
+  { TMS6_dpackl2,  t_dwop1,     t_xdwop2,       t_dwdst, 0x6,   0x3FF, FU_L1 },
+  { TMS6_dpackl4,  t_dwop1,     t_xdwop2,       t_dwdst, 0x346, 0x3FF, FU_L1 },
+  { TMS6_dpacklh2, t_dwop1,     t_xdwop2,       t_dwdst, 0xDE,  0x3FF, FU_L1 },
+  { TMS6_dpacklh4, t_op1,       t_xop2,         t_dst,   0x356, 0x3FF, FU_L1 },
+  { TMS6_dsadd,    t_dwop1,     t_xdwop2,       t_dwdst, 0x9E,  0x3FF, FU_L1 },
+  { TMS6_dsadd2,   t_dwop1,     t_xdwop2,       t_dwdst, 0xA4,  0x3FF, FU_L1 },
+  { TMS6_dssub,    t_dwop1,     t_xdwop2,       t_dwdst, 0x33E, 0x3FF, FU_L1 },
+  { TMS6_dssub2,   t_dwop1,     t_xdwop2,       t_dwdst, 0x326, 0x3FF, FU_L1 },
+  { TMS6_dsub,     t_dwop1,     t_xdwop2,       t_dwdst, 0x3E,  0x3FF, FU_L1 },
+  { TMS6_dsub2,    t_dwop1,     t_xdwop2,       t_dwdst, 0x26,  0x3FF, FU_L1 },
+  { TMS6_dsubsp,   t_dwop1,     t_xdwop2,       t_dwdst, 0x1EE, 0x3FF, FU_L1 },
+
   { TMS6_cmpy,     t_s2,        t_xs2,          t_dint,  0x0AC, 0x3FF, FU_M1 },
   { TMS6_cmpyr,    t_s2,        t_xs2,          t_s2,    0x0BC, 0x3FF, FU_M1 },
   { TMS6_cmpyr1,   t_s2,        t_xs2,          t_s2,    0x0CC, 0x3FF, FU_M1 },
@@ -1009,10 +1109,30 @@ static const tmsinsn_indexed_t nopreds[] =
   { TMS6_cmpy32r1, t_dwop1,     t_xdwop2,       t_dwdst, 0x1000,0x3FF, FU_M1 },
   { TMS6_cmpysp,   t_dwop1,     t_xdwop2,       t_qwdst, 0x3C0, 0x3FF, FU_M1 },
   { TMS6_davg2,    t_dwop1,     t_xdwop2,       t_dwdst, 0x13C, 0x3FF, FU_M1 },
+  { TMS6_davgnr2,  t_dwop1,     t_xdwop2,       t_dwdst, 0x11C, 0x3FF, FU_M1 },
+  { TMS6_davgnru4, t_dwop1,     t_xdwop2,       t_dwdst, 0x10C, 0x3FF, FU_M1 },
+  { TMS6_davgu4,   t_dwop1,     t_xdwop2,       t_dwdst, 0x12C, 0x3FF, FU_M1 },
+  { TMS6_dccmpy,   t_dwop1,     t_xdwop2,       t_dwdst, 0x3C,  0x3FF, FU_M1 },
+  { TMS6_dccmpyr1, t_dwop1,     t_xdwop2,       t_dwdst, 0xEC,  0x3FF, FU_M1 },
+  { TMS6_dcmpy,    t_dwop1,     t_xdwop2,       t_dwdst, 0x2C,  0x3FF, FU_M1 },
+  { TMS6_dcmpyr1,  t_dwop1,     t_xdwop2,       t_dwdst, 0xDC,  0x3FF, FU_M1 },
+  { TMS6_ddotp4h,  t_dwop1,     t_xdwop2,       t_dwdst, 0x8C,  0x3FF, FU_M1 },
+  { TMS6_ddotpsu4h,t_dwop1,     t_xdwop2,       t_dwdst, 0x9C,  0x3FF, FU_M1 },
+  { TMS6_dmpy2,    t_dwop1,     t_xdwop2,       t_qwdst, 0xC,   0x3FF, FU_M1 },
+  { TMS6_dmpysp,   t_dwop1,     t_xdwop2,       t_dwdst, 0x380, 0x3FF, FU_M1 },
+  { TMS6_dmpysu4,  t_dwop1,     t_xdwop2,       t_qwdst, 0x18C, 0x3FF, FU_M1 },
+  { TMS6_dmpyu2,   t_dwop1,     t_xdwop2,       t_qwdst, 0x20,  0x3FF, FU_M1 },
+  { TMS6_dmpyu4,   t_dwop1,     t_xdwop2,       t_qwdst, 0x4C,  0x3FF, FU_M1 },
+  { TMS6_dsmpy2,   t_dwop1,     t_xdwop2,       t_qwdst, 0x1C,  0x3FF, FU_M1 },
+  { TMS6_qmpy32,   t_qwop1,     t_qwop2,        t_qwdst, 0x200, 0x3FF, FU_M1 },
+  { TMS6_qmpysp,   t_qwop1,     t_qwop2,        t_qwdst, 0x3A0, 0x3FF, FU_M1 },
+  { TMS6_qsmpy32r1,t_qwop1,     t_qwop2,        t_qwdst, 0x1AC, 0x3FF, FU_M1 },
+
   { TMS6_swe,      t_none,      t_none,         t_none,  0x0000000, 0x3FFFFFF, FU_NONE },
   { TMS6_dint,     t_none,      t_none,         t_none,  0x0001000, 0x3FFFFFF, FU_NONE },
   { TMS6_swenr,    t_none,      t_none,         t_none,  0x0000800, 0x3FFFFFF, FU_NONE },
   { TMS6_rint,     t_none,      t_none,         t_none,  0x0001800, 0x3FFFFFF, FU_NONE },
+  { TMS6_mfence,   t_none,      t_none,         t_none,  0x0002000, 0xFFFF,    FU_NONE },
 };
 
 // 0 0 0 1开头的指令使用该函数解析
@@ -1075,7 +1195,7 @@ static int l_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
     {
     case Lunit_1:
         op = bits_ucst(code, 5, 7);
-        table = &lunit1_ops[op];
+        table = &lsunit_ops[op];
         break;
     case Lunit_3:
         return nopred_ops(insn, ctype, code, fp);
@@ -1136,7 +1256,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
         break;
     case Sunit_2:
         op = bits_ucst(code, 5, 7); //addsp...格式与L单元相近
-        table = &lunit1_ops[op];
+        table = &lsunit_ops[op];
         break;
     case Sunit_3:
         insn->itype = TMS6_addk;
@@ -1156,7 +1276,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
         break;
     case Sunit_6:
         insn->itype = TMS6_b;
-        make_near(&insn->Op1, bits_scst(code, 7, 21), NULL);
+        make_near(&insn->Op1, fp->start, bits_scst(code, 7, 21), 2);
         return insn->size;
     case Sunit_7:
         insn->itype = TMS6_b;
@@ -1169,12 +1289,12 @@ static int s_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
         return insn->size;
     case Sunit_9:
         insn->itype = bits_check(code, 12) ? TMS6_bdec : TMS6_bpos;
-        make_near(&insn->Op1, bits_scst(code, 13, 10), NULL);
+        make_near(&insn->Op1, fp->start, bits_scst(code, 13, 10), 2);
         make_reg(&insn->Op2, bits_ucst(code, 23, 5), bits_check(code, 1));
         return insn->size;
     case Sunit_10:
         insn->itype = TMS6_bnop;
-        make_near(&insn->Op1, bits_scst(code, 16, 12), fp);
+        make_near(&insn->Op1, fp->start, bits_scst(code, 16, 12), fp->fph_vaild ? 1 : 2);
         make_imm(&insn->Op2, bits_ucst(code, 13, 3));
         return insn->size;
     case Sunit_11:
@@ -1185,7 +1305,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
         return insn->size;
     case Sunit_12:
         insn->itype = TMS6_callp;
-        make_near(&insn->Op1, bits_scst(code, 7, 21), NULL);
+        make_near(&insn->Op1, fp->start, bits_scst(code, 7, 21), 2);
         return insn->size;
     case Sunit_13:
         insn->itype = bits_check(code, 6) ? TMS6_mvkh : TMS6_mvkl;
@@ -1195,13 +1315,8 @@ static int s_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
     case Sunit_14:
         return nopred_ops(insn, ctype, code, fp);
     case Sunit_15:
-        if (bits_check(code, 13))
-            insn->itype = TMS6_unpkhu4;
-        else
-            insn->itype = TMS6_unpklu4;
-        make_reg(&insn->Op1, bits_ucst(code, 18, 5), bits_ucst(code, 12, 1) != bits_ucst(code, 1, 1));
-        make_reg(&insn->Op2, bits_ucst(code, 23, 5), bits_check(code, 1));
-
+        op = bits_ucst(code, 13, 5);
+        table = &sunit15_ops[op];
         break;
     case Sunit_16:
         op = bits_ucst(code, 6, 2);
