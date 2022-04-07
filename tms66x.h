@@ -160,9 +160,5 @@ struct tms66x_t : public procmod_t, public event_listener_t
 int idaapi ana16(insn_t* insn, fetch_packet_t* fp);
 int idaapi ana32(insn_t* insn, fetch_packet_t* fp);
 int idaapi emu(const insn_t* insn);
-int idaapi out(outctx_t* ctx);
-void idaapi header(outctx_t* ctx);
-void idaapi out_insn(outctx_t* ctx);
-void idaapi footer(outctx_t* ctx);
 
 #endif // _TMS66x_HPP
