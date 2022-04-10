@@ -241,7 +241,7 @@ TMS6_xormpy,    // Galois Field Multiply With Zero Polynomial
 TMS6_xpnd2,     // Expand Bits to Packed 16-Bit Masks
 TMS6_xpnd4,     // Expand Bits to Packed 8-Bit Masks
 
-// New TMS320C674x instructions
+// New TMS320C66x instructions
 TMS6_birp,
 TMS6_bnrp,
 TMS6_ccmatmpy,

@@ -1,4 +1,5 @@
 #include "tms66x.h"
+#include "ins.hpp"
 
 const instruc_t Instructions[] =
 {
@@ -239,7 +240,7 @@ const instruc_t Instructions[] =
   { "XPND2",      CF_USE1|CF_CHG2                 },      // Expand Bits to Packed 16-Bit Masks
   { "XPND4",      CF_USE1|CF_CHG2                 },      // Expand Bits to Packed 8-Bit Masks
   
-   // New TMS320C674x instructions
+    // New TMS320C66x instructions
   { "B IRP",  0 },                                        //Branch Using an Interrupt Return Pointer
   { "B NRP",  0 },                                        //Branch Using NMI Return Pointer
   { "CCMATMPY", CF_USE1 | CF_USE2 | CF_CHG3 },            //Complex Conjugate Matrix Multiply, Signed Complex 16-bit (16-bit real/16-bit Imaginary)

@@ -64,85 +64,82 @@ static ssize_t idaapi notify(void*, int msgid, va_list)
 //--------------------------------------------------------------------------
 ssize_t idaapi tms66x_t::on_event(ssize_t msgid, va_list va)
 {
-    int code = 0;
     switch (msgid)
     {
-    case processor_t::ev_init:
-        hook_event_listener(HT_IDB, this, &LPH);
-        break;
-
-    case processor_t::ev_term:
-        unhook_event_listener(HT_IDB, this);
-        clr_module_data(data_id);
-        break;
-
-    case processor_t::ev_out_header:
-    {
-        outctx_t* ctx = va_arg(va, outctx_t*);
-        header(ctx);
-        return 1;
-    }
-
-    case processor_t::ev_out_footer:
-    {
-        outctx_t* ctx = va_arg(va, outctx_t*);
-        footer(ctx);
-        return 1;
-    }
-
-    case processor_t::ev_ana_insn:
-    {
-        static fetch_packet_t s_fp = { 0 };
-        insn_t* insn = va_arg(va, insn_t*);
-
-        if (is_in_fetch_packet(insn->ea, &s_fp) == false)
+        case processor_t::ev_out_header:
         {
-            update_fetch_packet(insn->ea, &s_fp);
+            outctx_t* ctx = va_arg(va, outctx_t*);
+            header(ctx);
+            return 1;
         }
 
-        int ins_itype = get_ins_type(insn->ea, &s_fp);
-        if (ins_itype == OPCODE_TYPE_16_BIT)
+        case processor_t::ev_out_footer:
         {
-            return ana16(insn, &s_fp);
+            outctx_t* ctx = va_arg(va, outctx_t*);
+            footer(ctx);
+            return 1;
         }
-        else if (ins_itype == OPCODE_TYPE_HEADER)
+
+        case processor_t::ev_ana_insn:
         {
-            insn->itype = TMS6_null;
-            insn->cflags |= aux_fph;
-            insn->size = 4;
-            return 4;
+            static fetch_packet_t s_fp = { 0 };
+            insn_t* insn = va_arg(va, insn_t*);
+
+            if (is_in_fetch_packet(insn->ea, &s_fp) == false)
+            {
+                update_fetch_packet(insn->ea, &s_fp);
+            }
+
+            int ins_itype = get_ins_type(insn->ea, &s_fp);
+            if (ins_itype == OPCODE_TYPE_16_BIT)
+            {
+                return ana16(insn, &s_fp);
+            }
+            else if (ins_itype == OPCODE_TYPE_HEADER)
+            {
+                insn->itype = TMS6_null;
+                insn->cflags |= aux_fph;
+                insn->size = 4;
+                return 4;
+            }
+            else if (ins_itype == OPCODE_TYPE_32_BIT)
+            {
+                return ana32(insn, &s_fp);
+            }
+            return 0;
         }
-        else if (ins_itype == OPCODE_TYPE_32_BIT)
+
+        case processor_t::ev_emu_insn:
         {
-            return ana32(insn, &s_fp);
+            const insn_t* insn = va_arg(va, const insn_t*);
+            return emu(insn) ? 1 : -1;
         }
-        return 0;
-    }
 
-    case processor_t::ev_emu_insn:
-    {
-        const insn_t* insn = va_arg(va, const insn_t*);
-        return emu(insn) ? 1 : -1;
-    }
+        case processor_t::ev_out_insn:
+        {
+            outctx_t* ctx = va_arg(va, outctx_t*);
+            out_insn(*ctx);
+            return 1;
+        }
 
-    case processor_t::ev_out_insn:
-    {
-        outctx_t* ctx = va_arg(va, outctx_t*);
-        out_insn(ctx);
-        return 1;
-    }
+        case processor_t::ev_out_operand:
+        {
+            outctx_t* ctx = va_arg(va, outctx_t*);
+            const op_t* op = va_arg(va, const op_t*);
+            return out_opnd(*ctx, *op) ? 1 : -1;
+        }
 
-    case processor_t::ev_out_operand:
-    {
-        outctx_t* ctx = va_arg(va, outctx_t*);
-        const op_t* op = va_arg(va, const op_t*);
-        return out_opnd(*ctx, *op) ? 1 : -1;
-    }
+        case processor_t::ev_out_mnem:
+        {
+            outctx_t* ctx = va_arg(va, outctx_t*);
+            out_mnem(*ctx);
+            return 1;
+        }
 
-    default:
-        break;
+        default:
+            break;
     }
-    return code;
+    return 0;
 }
 
 //-----------------------------------------------------------------------
@@ -208,14 +205,6 @@ static const char* const lnames[] =
   NULL
 };
 
-//--------------------------------------------------------------------------
-static const uchar retcode_1[] = { 0x62, 0x63, 0x0C, 0x00 };
-
-static const bytes_t retcodes[] =
-{
-  { sizeof(retcode_1), retcode_1 },
-  { 0, NULL }
-};
 
 //-----------------------------------------------------------------------
 //      Processor Definition
@@ -250,7 +239,7 @@ processor_t LPH =
   rVcs, rVds,
 
   NULL,                 // No known code start sequences
-  retcodes,
+  NULL,
 
   TMS6_null,
   TMS6_last,

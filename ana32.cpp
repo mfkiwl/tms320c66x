@@ -185,9 +185,12 @@ enum TMSC66X_OPCODE_TYPE
 
 static void make_imm(op_t* op, int32 v)
 {
-	op->type = o_imm;
-	op->value = v;
-	op->dtype = dt_dword;
+    if (v < 0)
+        op->type = o_signed;
+    else
+        op->type = o_imm;
+    op->value = v;
+    op->dtype = dt_dword;
 }
 
 static void make_spmask(op_t* op, int32 v)
@@ -228,6 +231,21 @@ static void make_near(op_t* op, uint32_t fp_start, int32 v, int shift = 1)
     op->type = o_near;
     op->dtype = dt_code;
     op->addr = fp_start + (v << shift);
+}
+
+static void make_displ(op_t* op, int32 base, int32 offset, bool is_other)
+{
+    make_reg(op, offset, is_other);
+    op->type = o_displ;
+    op->addr = offset;
+}
+
+static void make_phrase(op_t* op, int32 base, int32 offset, bool is_other_b, bool is_other_o)
+{
+    make_reg(op, offset, is_other_o);
+    op->secreg = op->reg;
+    make_reg(op, base, is_other_b);
+    op->type = o_phrase;
 }
 
 struct tms_reginfo_t
@@ -426,9 +444,18 @@ static int make_op(
         break;
     default:
         msg("[+]DEBUG: unknown opcode type %d\n", optype);
-        INTERR(257);
+        return 0;
     }
-    return true;
+    return 1;
+}
+
+static void swap_op1_and_op2(insn_t* insn)
+{
+    op_t tmp = insn->Op1;
+    insn->Op1 = insn->Op2;
+    insn->Op2 = tmp;
+    insn->Op1.n = 0;
+    insn->Op2.n = 1;
 }
 
 //--------------------------------------------------------------------------
@@ -454,7 +481,7 @@ static int table_insns(
 		return 0;
 	if (xptr->type != o_void)
 		xptr++;
-	if (!make_op(insn, *xptr, code, tinsn->src2, bits_ucst(code, 18, 5), cross_path != bits_ucst(code, 1, 1), fp))
+	if (!make_op(insn, *xptr, code, tinsn->src2, bits_ucst(code, 18, 5), bits_ucst(code, 12, 1) != bits_ucst(code, 1, 1), fp))
 		return 0;
 	if (xptr->type != o_void)
 		xptr++;
@@ -1159,6 +1186,90 @@ static int nopred_ops(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
     return 0;
 }
 
+
+struct tms_ldinfo_t
+{
+    uchar itype;
+    uchar dtype;
+    uchar shift;
+};
+
+static const tms_ldinfo_t ldinfo[] =
+{
+  { TMS6_ldhu,  dt_word,  1 },  // 0000
+  { TMS6_ldbu,  dt_byte,  0 },  // 0001
+  { TMS6_ldb,   dt_byte,  0 },  // 0010
+  { TMS6_stb,   dt_byte,  0 },  // 0011
+  { TMS6_ldh,   dt_word,  1 },  // 0100
+  { TMS6_sth,   dt_word,  1 },  // 0101
+  { TMS6_ldw,   dt_dword, 2 },  // 0110
+  { TMS6_stw,   dt_dword, 2 },  // 0111
+  { TMS6_null,  0,        0 },  // 1000
+  { TMS6_null,  0,        0 },  // 1001
+  { TMS6_ldndw, dt_qword, 3 },  // 1010
+  { TMS6_ldnw,  dt_dword, 2 },  // 1011
+  { TMS6_stdw,  dt_qword, 3 },  // 1100
+  { TMS6_stnw,  dt_dword, 2 },  // 1101
+  { TMS6_lddw,  dt_qword, 3 },  // 1110
+  { TMS6_stndw, dt_qword, 3 },  // 1111
+};
+static int load_store_ops(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp)
+{
+    bool is_displ = false;
+    int baseR, offsetR;
+    int idx = bits_ucst(code, 4, 3);
+    if (ctype != Dunit_5)
+        idx |= bits_ucst(code, 8, 1, 3);    //add r bit
+        
+    const tms_ldinfo_t* ld = &ldinfo[idx];
+    if (ld->itype == TMS6_null)
+        return 0;
+
+    insn->itype = ld->itype;
+
+    if (ctype == Dunit_5)
+    {
+        baseR = rA15;
+        if (insn->itype == TMS6_ldbu || insn->itype == TMS6_ldhu)
+            offsetR = bits_ucst(code, 8, 15) << ld->shift;
+        else
+            offsetR = bits_scst(code, 8, 15) << ld->shift;
+        insn->Op1.mode = MO_ADD_REG;
+        is_displ = true;
+    }
+    else
+    {
+        baseR = bits_ucst(code, 18, 5);
+        offsetR = bits_scst(code, 13, 5);
+        insn->Op1.mode = bits_ucst(code, 9, 4);
+        if (insn->Op1.mode == MO_SUB_UCST || insn->Op1.mode == MO_ADD_UCST ||
+            insn->Op1.mode == MO_SUBSUB_UCST || insn->Op1.mode == MO_ADDADD_UCST ||
+            insn->Op1.mode == MO_UCST_SUBSUB || insn->Op1.mode == MO_UCST_ADDADD)
+            is_displ = true;
+        if(is_displ)
+            offsetR <<= ld->shift;
+    }
+
+    if (is_displ)
+        make_displ(&insn->Op1, baseR, offsetR, bits_check(code, 7));
+    else
+        make_phrase(&insn->Op1, baseR, offsetR, bits_check(code, 7), bits_check(code, 7));
+    insn->Op1.dtype = ld->dtype;
+
+    if (ld->shift == 3)
+        make_regpair(&insn->Op2, bits_ucst(code, 23, 5), bits_check(code, 1), false);
+    else
+        make_reg(&insn->Op2, bits_ucst(code, 23, 5), bits_check(code, 1));
+
+    if (insn->itype == TMS6_stb || insn->itype == TMS6_sth || 
+        insn->itype == TMS6_stw || insn->itype == TMS6_stdw || 
+        insn->itype == TMS6_stnw || insn->itype == TMS6_stndw)
+        swap_op1_and_op2(insn);
+
+    insn->funit = bits_check(code, 1) ? FU_D2 : FU_D1;
+    return insn->size;
+}
+
 static int d_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp)
 {
     char op;
@@ -1182,7 +1293,9 @@ static int d_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
     case Dunit_6:
     case Dunit_7:
         //load store ins
+        return load_store_ops(insn, ctype, code, fp);
     }
+    return 0;
 }
 
 static int l_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp)
@@ -1384,6 +1497,48 @@ static int n_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
 	return 0;
 }
 
+static void printf_insn(insn_t* insn)
+{
+    msg("******************\n");
+    msg("ea: %X\n", insn->ea);
+    msg("size: %X\n", insn->size);
+    msg("type: %X\n", insn->itype);
+    msg("unit: %d\n", insn->funit);
+    msg("cond: %X\n", insn->cond);
+    int op_idx = 0;
+    while (1)
+    {
+        if (insn->ops[op_idx].type == o_void)
+            break;
+        msg("op_%d: type=%d  ", op_idx, insn->ops[op_idx].type);
+        switch (insn->ops[op_idx].type)
+        {
+            case o_reg:
+            case o_regpair:
+            case o_regqpair:
+                msg("reg=%d\n", insn->ops[op_idx].reg);
+                break;
+            case o_imm:
+            case o_signed:
+                msg("imm=%d\n", insn->ops[op_idx].value);
+                break;
+            case o_displ:
+                msg("base=%d  offest=%d\n", insn->ops[op_idx].reg, insn->ops[op_idx].addr);
+                break;
+            case o_phrase:
+                msg("base=%d  offest=%d\n", insn->ops[op_idx].reg, insn->ops[op_idx].secreg);
+                break;
+            case o_near:
+                msg("near=%d\n", insn->ops[op_idx].addr);
+                break;
+            default:
+                msg("\n");
+        }
+        op_idx++;
+    }
+    msg("******************\n");
+}
+
 int idaapi ana32(insn_t* insn, fetch_packet_t* fp)
 {
 	if ((insn->ea & 3) != 0)	//4 bytes align
@@ -1403,11 +1558,12 @@ int idaapi ana32(insn_t* insn, fetch_packet_t* fp)
 		ret = s_unit_ins(insn, ins_ctype, code, fp);
 	else if (ins_ctype >= NUNIT_START && ins_ctype <= NUNIT_END)
 		ret = n_unit_ins(insn, ins_ctype, code, fp);
-
     if (ret > 0)
         insn->cond = bits_ucst(code, 28, 4);//cond set
 
     if (ret > 0 && bits_check(code, 0))
         insn->cflags |= aux_para;   //parallel set
+    msg("%X: ctype:%d  ret:%d\n", insn->ea, ins_ctype, ret);
+    printf_insn(insn);
     return ret;
 }

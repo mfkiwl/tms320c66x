@@ -92,6 +92,9 @@ void check_unique(filter_table_t* ftbl, int ftbl_size)
 {
     int i, j, k;
 
+	if (ftbl[0].weight == 0)
+		init_filter_table(ftbl, ftbl_size);
+
     for (i = 0; i < ftbl_size; i++)
     {
         char* fmt_str = ftbl[i].format;
@@ -107,7 +110,7 @@ void check_unique(filter_table_t* ftbl, int ftbl_size)
                     break;
                 }
             }
-            if (unique == false)
+            if (unique == false && ftbl[i].weight == ftbl[j].weight)
             {
                 printf("**************************\n");
                 printf("%03d: %s\n", ftbl[i].type, fmt_str);

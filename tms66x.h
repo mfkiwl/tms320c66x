@@ -23,6 +23,7 @@
 #define o_regqpair      o_idpspec1      // 128bits Register pair (A3:A2:A1:A0 B3:B2:B1:B0)
 #define o_spmask        o_idpspec2      // unit mask (reg)
 #define o_stgcyc        o_idpspec3      // fstg/fcyc (value)
+#define o_signed        o_idpspec4      // 有符号立即数
 
 // o_phrase: the second register is held in secreg (specflag1)
 // baseR[offsetR]寻址方式中用于保存offsetR的值
@@ -81,19 +82,19 @@ enum funit_t : uint8_t
 #define cond auxpref_u8[0]      // The condition code of instruction
 enum cond_t : uint8_t
 {
-    CO_AL = 0x0,      // unconditional
-    CO_B0 = 0x2,      // B0
-    CO_NB0 = 0x3,     // !B0
-    CO_B1 = 0x4,      // B1
-    CO_NB1 = 0x5,     // !B1
-    CO_B2 = 0x6,      // B2
-    CO_NB2 = 0x7,     // !B2
-    CO_A1 = 0x8,      // A1
-    CO_NA1 = 0x9,     // !A1
-    CO_A2 = 0xA,      // A2
-    CO_NA2 = 0xB,     // !A2
-    CO_A0 = 0xC,      // A0
-    CO_NA0 = 0xD,     // !A0
+    CO_AL = 0x0,      // 0000 unconditional
+    CO_B0 = 0x2,      // 0010 B0
+    CO_NB0 = 0x3,     // 0011 !B0
+    CO_B1 = 0x4,      // 0100 B1
+    CO_NB1 = 0x5,     // 0101 !B1
+    CO_B2 = 0x6,      // 0110 B2
+    CO_NB2 = 0x7,     // 0111 !B2
+    CO_A1 = 0x8,      // 1000 A1
+    CO_NA1 = 0x9,     // 1001 !A1
+    CO_A2 = 0xA,      // 1010 A2
+    CO_NA2 = 0xB,     // 1011 !A2
+    CO_A0 = 0xC,      // 1100 A0
+    CO_NA0 = 0xD,     // 1101 !A0
     //Reserved = 1, 0xE, 0xF
 };
 
@@ -151,14 +152,17 @@ enum RegNo : uint16_t
 };
 
 extern int data_id;  //for SET_MODULE_DATA
-struct tms66x_t : public procmod_t, public event_listener_t
+struct tms66x_t : public procmod_t
 {
-    bool flow = false;
     ssize_t idaapi on_event(ssize_t msgid, va_list va);
 };
 
 int idaapi ana16(insn_t* insn, fetch_packet_t* fp);
 int idaapi ana32(insn_t* insn, fetch_packet_t* fp);
 int idaapi emu(const insn_t* insn);
-
+void idaapi out_insn(outctx_t& ctx);
+void idaapi out_mnem(outctx_t& ctx);
+bool idaapi out_opnd(outctx_t& ctx, const op_t& x);
+void idaapi header(outctx_t* ctx);
+void idaapi footer(outctx_t* ctx);
 #endif // _TMS66x_HPP

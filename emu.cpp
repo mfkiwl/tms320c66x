@@ -65,12 +65,13 @@ static int code_quote(const insn_t* insn)
             {
                 //msg("%X: add function %X\n", insn->ea, insn->Op1.addr);
                 insn->add_cref(insn->Op1.addr, insn->Op1.offb, fl_CN);
+                msg("[emu] return 1\n");
                 return 1;
             }
             next_adr = next_ins.ea + next_ins.size;
         }
     }
-    return 0;
+    return 1;
 }
 
 static void handle_operand(const insn_t* insn, const op_t* x, bool isload)
@@ -98,8 +99,7 @@ int emu(const insn_t* insn)
 {
 	fetch_packet_t fp;
 	update_fetch_packet(insn->ea, &fp);
-	uint32 Feature = get_ins_type(insn->ea, &fp);
-	insn->get_canon_feature(ph);    //get instruction's CF_XX flags
+    uint32 Feature = insn->get_canon_feature(ph);    //get instruction's CF_XX flags
 
     if (get_ins_type(insn->ea, &fp) != OPCODE_TYPE_32_BIT)
     {

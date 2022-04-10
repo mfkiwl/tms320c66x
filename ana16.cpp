@@ -174,7 +174,10 @@ static void make_reg(op_t* op, int32 v, bool is_other, bool is_high)
 
 static void make_imm(op_t* op, int32 v)
 {
-	op->type = o_imm;
+	if (v < 0)
+		op->type = o_signed;
+	else
+		op->type = o_imm;
 	op->value = v;
 	op->dtype = dt_dword;
 }
@@ -298,7 +301,6 @@ static int make_ld_st(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 	//15:1111 * Rb++[Ro]
 	char ins_type, sz, ld_st, offset, src_dst, src1, ptr, t, s, na;
 
-
 	switch (ctype)
 	{
 	case TMSC6L_Doff4:
@@ -337,15 +339,10 @@ static int make_ld_st(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 
 	ins_type = (fph->dsz << 3) | (sz << 2) | (ld_st << 1) | ((code >> 4) & 1);
 	int itype = filter(g_ld_st, 22, ins_type);
-	insn->Op1.dtype = (itype >> 20) & 0xF;
 	insn->itype = itype & 0xFFFF;
 
 	if (insn->itype == TMS6_stdw || insn->itype == TMS6_lddw || insn->itype == TMS6_stndw || insn->itype == TMS6_ldndw)
-	{
 		src_dst |= 6;
-		insn->Op1.dtype = dt_qword;
-	}else
-		insn->Op1.dtype = dt_dword;
 		
 
 	if (insn->Op1.type == o_displ)
@@ -359,13 +356,13 @@ static int make_ld_st(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		make_phrase(&insn->Op1, ptr, offset, s, s, false);
 		make_reg(&insn->Op2, src_dst, t, false);
 	}
+	insn->Op1.dtype = (itype >> 20) & 0xF;
+
 	if (insn->itype == TMS6_stdw || insn->itype == TMS6_lddw || insn->itype == TMS6_stndw || insn->itype == TMS6_ldndw)
 		insn->Op2.type = o_regpair;
 
 	if ((itype & LOAD_INS) != LOAD_INS)
-	{
-		swap_op1_and_op2(insn);
-	}
+		swap_op1_and_op2(insn);	//store ins swap oprand
 
 	insn->size = 2;
 	insn->funit = s ? FU_D2 : FU_D1;
@@ -1044,62 +1041,6 @@ static void parallel_proc(insn_t* insn, fectch_paket_t* fp)
 	{
 		insn->cflags |= aux_para;
 	}
-}
-
-static int repair_ins(insn_t* insn, uint32_t code, fectch_paket_t* fp)
-{
-	int src2, src1;
-
-	if (bits_ucst(code, 2, 11) == 0x48)	//bnop displ
-	{
-		src1 = bits_ucst(code, 3, 3);
-		src2 = bits_scst(code, 16, 12);
-		insn->cond = bits_ucst(code, 28, 4);
-		switch (insn->cond)
-		{
-		case 0x0: // 0000 unconditional
-		case 0x2: // 0010 B0
-		case 0x3: // 0011 !B0
-		case 0x4: // 0100 B1
-		case 0x5: // 0101 !B1
-		case 0x6: // 0110 B2
-		case 0x7: // 0111 !B2
-		case 0x8: // 1000 A1
-		case 0x9: // 1001 !A1
-		case 0xA: // 1010 A2
-		case 0xB: // 1011 !A2
-		case 0xC: // 1100 A0
-		case 0xD: // 1101 !A0
-			break;
-		case 0xE: // 1110 reserved
-		case 0xF: // 1111 reserved
-			return 0;
-		case 0x1: // 0001 no predicate
-			insn->cond = 0;
-			break;
-		}
-
-		if (fp->fph_vaild)
-		{
-			make_near(&insn->Op1, fp->start, src2);
-		}
-		else
-		{
-			insn->Op1.type = o_near;
-			insn->Op1.dtype = dt_code;
-			insn->Op1.addr = fp->start + (src2 << 2);
-		}
-		make_imm(&insn->Op2, src1);
-
-		if (bits_check(code, 0))
-			insn->cflags |= aux_para;
-		insn->funit = bits_check(code, 1) ? FU_S2 : FU_S1;
-		insn->itype = TMS6_bnop;
-		insn->size = 4;
-		return 4;
-	}
-
-	return 0;
 }
 
 int idaapi ana16(insn_t* insn, fetch_packet_t* fp)
