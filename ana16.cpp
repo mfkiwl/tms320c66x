@@ -174,10 +174,7 @@ static void make_reg(op_t* op, int32 v, bool is_other, bool is_high)
 
 static void make_imm(op_t* op, int32 v)
 {
-	if (v < 0)
-		op->type = o_signed;
-	else
-		op->type = o_imm;
+	op->type = o_imm;
 	op->value = v;
 	op->dtype = dt_dword;
 }
@@ -239,6 +236,8 @@ static int get_unit_type(char unit, char s)
 	return FU_NONE;
 }
 
+//指令默认为 ins src1, src2, dst
+//如果src2在src1之前则两者互换
 static void swap_op1_and_op2(insn_t *insn)
 {
 	op_t tmp = insn->Op1;
@@ -376,7 +375,7 @@ static int dls_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 	//  op   | 1  | 1  | 0  | src/dst | 1 | 1 |  unit | 1 | 1 | s
 	//  3                        3                2             1
 
-	char unit, src_dst, op;
+	char src_dst, op, unit;
 
 	src_dst = bits_ucst(code, 7, 3);
 	op = bits_ucst(code, 13, 3);
@@ -487,12 +486,14 @@ static int d_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		src_dst = bits_ucst(code, 13, 3);
 		src2 = bits_ucst(code, 7, 3);
 		make_reg(&insn->Op1, src_dst, bits_check(code, 0), false);
-		make_reg(&insn->Op2, src2, bits_check(code, 0), false);
+		make_reg(&insn->Op2, src2, bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1), false);
 		make_reg(&insn->Op3, src_dst, bits_check(code, 0), false);
 		if (bits_check(code, 11))
-			insn->itype = TMS6_add;
-		else
 			insn->itype = TMS6_sub;
+		else
+			insn->itype = TMS6_add;
+		if(bits_check(code,12))
+			insn->cflags |= aux_xp;
 		insn->funit = bits_check(code, 0) ? FU_D2 : FU_D1;
 		insn->size = 2;
 		return 2;
@@ -573,7 +574,7 @@ static int l_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		make_reg(&insn->Op1, src1, bits_check(code, 0), false);
 		make_reg(&insn->Op2, src2, bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1), false);
 		make_reg(&insn->Op3, dst, bits_check(code, 0), false);
-		if (bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1))
+		if (bits_ucst(code, 12, 1))
 			insn->cflags |= aux_xp;
 		switch (bits_ucst(code, 11, 1, 1) | fph->sat)
 		{
@@ -601,14 +602,14 @@ static int l_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		make_imm(&insn->Op1, cst);
 		make_reg(&insn->Op2, src2, bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1), false);
 		make_reg(&insn->Op3, dst, bits_check(code, 0), false);
-		if (bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1))
+		if (bits_ucst(code, 12, 1))
 			insn->cflags |= aux_xp;
 		insn->itype = TMS6_add;
 		insn->funit = bits_check(code, 0) ? FU_L2 : FU_L1;
 		insn->size = 2;
 		return 2;
 	case TMSC6L_Ltbd:
-		msg("%X ltbd ins is incomplete\n", insn->ea);
+		//msg("%X ltbd ins is incomplete\n", insn->ea);
 		return 0;
 	case TMSC6L_L2c:
 		src1 = bits_ucst(code, 13, 3);
@@ -617,7 +618,7 @@ static int l_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		make_reg(&insn->Op1, src1, bits_check(code, 0), false);
 		make_reg(&insn->Op2, src2, bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1), false);
 		make_reg(&insn->Op3, dst, bits_check(code, 0), false);
-		if (bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1))
+		if (bits_ucst(code, 12, 1))
 			insn->cflags |= aux_xp;
 		insn->itype = l2c_table[bits_ucst(code, 11, 1, 2) | bits_ucst(code, 5, 2)];
 		insn->funit = bits_check(code, 0) ? FU_L2 : FU_L1;
@@ -692,6 +693,8 @@ static int m_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 	make_reg(&insn->Op2, src2, s != x, false);
 	make_reg(&insn->Op3, dst, s, false);
 
+	if (bits_check(code, 12))
+		insn->cflags |= aux_xp;
 	insn->funit = s ? FU_M2 : FU_M1;
 	insn->size = 2;
 	return 2;
@@ -754,7 +757,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		make_reg(&insn->Op1, src1, bits_check(code, 0), false);
 		make_reg(&insn->Op2, src2, bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1), false);
 		make_reg(&insn->Op3, dst, bits_check(code, 0), false);
-		if(bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1))
+		if(bits_ucst(code, 12, 1))
 			insn->cflags |= aux_xp;
 		switch (bits_combine_111(fph->br, fph->sat, bits_ucst(code, 11, 1)))
 		{
@@ -780,13 +783,15 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 			src1 = 8;
 		src2 = bits_ucst(code, 7, 3);
 		dst = bits_ucst(code, 4, 3);
-		make_reg(&insn->Op1, src2, bits_check(code, 0), false);
+		make_reg(&insn->Op1, src2, bits_ucst(code, 0, 1) != bits_ucst(code, 12, 1), false);
 		make_imm(&insn->Op2, src1);
 		make_reg(&insn->Op3, dst, bits_check(code, 0), false);
 		if (bits_check(code, 11))
 			insn->itype = TMS6_shl;
 		else
 			insn->itype = TMS6_shr;
+		if (bits_ucst(code, 12, 1))
+			insn->cflags |= aux_xp;
 		insn->size = 2;
 		insn->funit = bits_check(code, 0) ? FU_S2 : FU_S1;
 		return 2;
@@ -795,6 +800,8 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		dst = bits_ucst(code, 7, 3);
 		make_imm(&insn->Op1, ucst);
 		make_reg(&insn->Op2, dst, bits_check(code, 0), false);
+		if (bits_ucst(code, 12, 1))
+			insn->cflags |= aux_xp;
 		insn->itype = TMS6_mvk;
 		insn->funit = bits_check(code, 0) ? FU_S2 : FU_S1;
 		insn->size = 2;
@@ -858,6 +865,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 			make_imm(&insn->Op2, 31);
 			make_reg(&insn->Op3, 0, bits_check(code, 0), false);
 			insn->Op1.src2 = get_reg(dst, bits_check(code, 0), false);
+			insn->cflags |= aux_src2;
 			break;
 		case 1:
 			insn->itype = TMS6_set;
@@ -865,6 +873,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 			make_imm(&insn->Op2, ucst);
 			make_reg(&insn->Op3, dst, bits_check(code, 0), false);
 			insn->Op1.src2 = insn->Op3.reg;
+			insn->cflags |= aux_src2;
 			break;
 		case 2:
 			insn->itype = TMS6_clr;
@@ -872,6 +881,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 			make_imm(&insn->Op2, ucst);
 			make_reg(&insn->Op3, dst, bits_check(code, 0), false);
 			insn->Op1.src2 = insn->Op3.reg;
+			insn->cflags |= aux_src2;
 			break;
 		}
 		insn->size = 2;
@@ -889,6 +899,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 			make_imm(&insn->Op2, 16);
 			make_reg(&insn->Op3, dst, bits_check(code, 0), false);
 			insn->Op1.src2 = get_reg(src2, bits_check(code, 0), false);
+			insn->cflags |= aux_src2;
 			break;
 		case 1:
 		case 3:
@@ -897,6 +908,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 			make_imm(&insn->Op2, 24);
 			make_reg(&insn->Op3, dst, bits_check(code, 0), false);
 			insn->Op1.src2 = get_reg(src2, bits_check(code, 0), false);
+			insn->cflags |= aux_src2;
 			break;
 		}
 		insn->size = 2;
@@ -908,7 +920,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		make_reg(&insn->Op1, dst, bits_check(code, 0), false);
 		make_reg(&insn->Op2, src2, bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1), false);
 		make_reg(&insn->Op3, dst, bits_check(code, 0), false);
-		if (bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1))
+		if (bits_ucst(code, 12, 1))
 			insn->cflags |= aux_xp;
 		if (bits_check(code, 12))
 			insn->itype = TMS6_sub;
@@ -962,7 +974,7 @@ static int dls_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph
 		}
 		make_reg(&insn->Op1, src2, bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1), false);
 		make_reg(&insn->Op2, dst, bits_ucst(code, 0, 1), false);	//TO CHECK:fph->rs
-		if (bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1))
+		if (bits_ucst(code, 12, 1))
 			insn->cflags |= aux_xp;
 		insn->funit = get_unit_type(unit, bits_ucst(code, 0, 1));
 		insn->size = 2;

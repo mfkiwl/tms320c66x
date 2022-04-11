@@ -202,10 +202,19 @@ bool out_tms320c66x_t::out_operand(const op_t& x)
 			break;
 
 		case o_imm:
-		case o_signed:
-			sign = x.type == o_signed ? OOF_SIGNED : 0;
-			out_value(x, OOFS_IFSIGN | OOFW_IMM | sign);
+		{
+			sval_t v = (sval_t)(x.value);
+			out_tagon(COLOR_NUMBER);
+			if (v > -32 && v < 32)
+				out_btoa(v, 10);
+			else
+				out_btoa(v, 16);
+			out_tagoff(COLOR_NUMBER);
+			//sign = x.type == o_signed ? OOF_SIGNED : 0;
+			//out_value(x, OOFS_IFSIGN | OOFW_IMM | sign);
 			break;
+		}
+
 
 		case o_stgcyc:	//todo: check
 			print_stg_cyc(insn.ea, x.value);

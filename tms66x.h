@@ -23,7 +23,6 @@
 #define o_regqpair      o_idpspec1      // 128bits Register pair (A3:A2:A1:A0 B3:B2:B1:B0)
 #define o_spmask        o_idpspec2      // unit mask (reg)
 #define o_stgcyc        o_idpspec3      // fstg/fcyc (value)
-#define o_signed        o_idpspec4      // 有符号立即数
 
 // o_phrase: the second register is held in secreg (specflag1)
 // baseR[offsetR]寻址方式中用于保存offsetR的值
@@ -105,6 +104,7 @@ enum cond_t : uint8_t
 #define aux_xp        0x0002  // X path is used
 #define aux_src2      0x0004  // 是否为4个操作数的指令
 #define aux_fph       0x0008  // fetch packet header
+#define aux_pseudo    0x0010  // pseudo ins(伪指令)
 
 //------------------------------------------------------------------
 enum RegNo : uint16_t
