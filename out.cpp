@@ -13,6 +13,7 @@ public:
 	void out_pre_mode(int mode);
 	void out_post_mode(int mode);
 	void print_stg_cyc(ea_t ea, int stgcyc);
+	bool tms6_out_name_expr(const op_t& x, uval_t opval);
 };
 CASSERT(sizeof(out_tms320c66x_t) == sizeof(outctx_t));
 
@@ -259,9 +260,26 @@ bool out_tms320c66x_t::out_operand(const op_t& x)
 			}
 			break;
 		}
+		case o_near:
+		{
+			ea_t go_addr = x.addr & (~0x1F);
+			if (out_name_expr(x, go_addr, go_addr))
+			{
+				//out_symbol('+');
+				//out_long((go_addr - this->insn.ea), 16);
+			}
+			else
+			{
+				out_tagon(COLOR_ERROR);
+				out_btoa(x.addr, 16);
+				out_tagoff(COLOR_ERROR);
+				remember_problem(PR_NONAME, this->insn.ea);
+			}
+			break;
+		}
 
 		default:
-			msg("out: %a: bad optype %d", insn.ea, x.type);
+			msg("out: %a: bad optype %d\n", insn.ea, x.type);
 			break;
 	}
 	return true;
@@ -276,13 +294,17 @@ void out_tms320c66x_t::out_mnem(void)
 	{
 		if (this->insn.itype == jump_ins[i])
 		{
-			out_line(Instructions[this->insn.itype].name, COLOR_REGCMT);
+			out_line(Instructions[this->insn.itype].name, COLOR_PREFIX);
+			out_spaces(16);
 			return;
 		}
 	}
 
-	if(this->insn.itype < TMS6_last)
+	if (this->insn.itype < TMS6_last)
+	{
 		out_line(Instructions[this->insn.itype].name);
+		out_spaces(16);
+	}
 	else
 		out_line("error");
 }

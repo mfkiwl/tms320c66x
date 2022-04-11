@@ -12,6 +12,54 @@ static void data_quote(const insn_t* insn, const op_t* x)
 
 }
 
+//在发生分支的地址后面delay slot内寻找是否有addkpc xx, B3, x操作
+static bool check_func_1(const insn_t* insn)
+{
+    insn_t next_ins;
+    ea_t next_adr = insn->ea + insn->size;
+    int loop = 6;
+    if (insn->itype == TMS6_bnop)
+        loop -= insn->Op2.value;
+    while (loop > 0)
+    {
+        if (decode_insn(&next_ins, next_adr) == 0)
+            break;
+        if ((next_ins.cflags & aux_para) == 0)
+            loop -= 1;
+        if (next_ins.itype == TMS6_nop)
+            loop -= next_ins.Op1.value;
+        if (next_ins.itype == TMS6_addkpc && next_ins.Op2.reg == rB3)
+            return true;
+        next_adr = next_ins.ea + next_ins.size;
+    }
+    return false;
+}
+
+//在分支跳转后的loop条指令内寻找是否有对B15寄存器减栈的操作
+static bool check_func_2(const insn_t* insn)
+{
+    insn_t next_ins;
+    ea_t next_adr = insn->Op1.addr;
+    int loop = 6;   
+    while (loop)
+    {
+        decode_insn(&next_ins, next_adr);
+        int type = next_ins.itype;
+        if (type == TMS6_stdw || type == TMS6_stnw || type == TMS6_stndw
+            || type == TMS6_stb || type == TMS6_stbu || type == TMS6_sth
+            || type == TMS6_sthu || type == TMS6_stw)
+        {
+            if (next_ins.Op2.type == o_displ && next_ins.Op2.reg == rB15)
+                return true;
+        }
+        //sub b15, 4, b15
+        //add -4, b15, b15
+        next_adr = next_ins.ea + next_ins.size;
+        loop -= 1;
+    }
+    return false;
+}
+
 /*
     处理代码引用
     callp必然是函数跳转
@@ -22,54 +70,20 @@ static int code_quote(const insn_t* insn)
 {
     if (insn->itype == TMS6_callp)
     {
-        //msg("%X: add function %X\n", insn->ea, insn->Op1.addr);
         insn->add_cref(insn->Op1.addr, insn->Op1.offb, fl_CN);
         return 1;
     }
     if (insn->itype == TMS6_bnop || insn->itype == TMS6_b)
     {
-        //insn_t next_ins;
-        //ea_t next_adr = insn->Op1.addr;
-        //int loop = 6;   
-        //while (loop)  //在分支跳转后的loop条指令内寻找是否有对B15寄存器减栈的操作
-        //{
-        //    decode_insn(&next_ins, next_adr);
-        //    int type = next_ins.itype;
-        //    if (type == TMS6_stdw || type == TMS6_stnw || type == TMS6_stndw
-        //        || type == TMS6_stb || type == TMS6_stbu || type == TMS6_sth
-        //        || type == TMS6_sthu || type == TMS6_stw)
-        //    {
-        //        if (next_ins.Op2.type == o_displ && next_ins.Op2.reg == rB15)
-        //            insn->add_cref(insn->Op1.addr, insn->Op1.offb, fl_CN);
-        //    }
-        //    //sub b15, 4, b15
-        //    //add -4, b15, b15
-        //    next_adr = next_ins.ea + next_ins.size;
-        //    loop -= 1;
-        //}
 
-        insn_t next_ins;
-        ea_t next_adr = insn->ea + insn->size;
-        int loop = 6;
-        if (insn->itype == TMS6_bnop)
-            loop -= insn->Op2.value;
-        while (loop > 0)    //在发生分支的地址后面delay slot内寻找是否有addkpc xx,B3,x操作
-        {
-            if (decode_insn(&next_ins, next_adr) == 0)
-                break;
-            if((next_ins.cflags & aux_para) == 0)
-                loop -= 1;
-            if (next_ins.itype == TMS6_nop)
-                loop -= next_ins.Op1.value;
-            if (next_ins.itype == TMS6_addkpc && next_ins.Op2.reg == rB3)
-            {
-                //msg("%X: add function %X\n", insn->ea, insn->Op1.addr);
-                insn->add_cref(insn->Op1.addr, insn->Op1.offb, fl_CN);
-                msg("[emu] return 1\n");
-                return 1;
-            }
-            next_adr = next_ins.ea + next_ins.size;
-        }
+
+        bool check1, check2;
+
+        check1 = check_func_1(insn);
+        check2 = check_func_2(insn);
+
+        if(check2 || check1)
+            insn->add_cref(insn->Op1.addr, insn->Op1.offb, fl_CN);
     }
     return 1;
 }
@@ -106,7 +120,7 @@ int emu(const insn_t* insn)
         add_cref(insn->ea, insn->ea + insn->size, fl_F);	//相邻指令引用
         return 1;
     }
-    return code_quote(insn);
+    code_quote(insn);
 
 	flags_t F = get_flags(insn->ea);
 	if (Feature & CF_USE1) handle_operand(insn, &insn->Op1, true);
@@ -117,7 +131,7 @@ int emu(const insn_t* insn)
 	if (Feature & CF_CHG2) handle_operand(insn, &insn->Op2, false);
 	if (Feature & CF_CHG3) handle_operand(insn, &insn->Op3, false);
 
-	if ((Feature & CF_STOP) == 0 || 1)
+	if ((Feature & CF_STOP) == 0)
 		add_cref(insn->ea, insn->ea + insn->size, fl_F);	//相邻指令引用
 
 	return 1;
