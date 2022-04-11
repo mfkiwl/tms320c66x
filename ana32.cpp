@@ -232,7 +232,7 @@ static void make_near(op_t* op, uint32_t fp_start, int32 v, int shift = 1)
 
 static void make_displ(op_t* op, int32 base, int32 offset, bool is_other)
 {
-    make_reg(op, offset, is_other);
+    make_reg(op, base, is_other);
     op->type = o_displ;
     op->addr = offset;
 }
@@ -1336,8 +1336,9 @@ static int load_store_ops(insn_t* insn, int ctype, uint32_t code, fetch_packet_t
             insn->Op1.mode == MO_SUBSUB_UCST || insn->Op1.mode == MO_ADDADD_UCST ||
             insn->Op1.mode == MO_UCST_SUBSUB || insn->Op1.mode == MO_UCST_ADDADD)
             is_displ = true;
-        if(is_displ)
-            offsetR <<= ld->shift;
+        //todo: if <<=, should set offset flag
+        //if(is_displ)
+        //    offsetR <<= ld->shift;
     }
 
     if (is_displ)
@@ -1475,7 +1476,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
         insn->itype = TMS6_addkpc;
         make_imm(&insn->Op1, bits_scst(code, 16, 7));
         make_imm(&insn->Op2, bits_ucst(code, 13, 3));
-        make_reg(&insn->Op3, bits_ucst(code, 23, 5), bits_check(code, 1));
+        make_reg(&insn->Op3, bits_ucst(code, 23, 5), true);
         return insn->size;
     case Sunit_5:
         op = bits_ucst(code, 6, 6);
@@ -1488,7 +1489,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
     case Sunit_7:
         insn->itype = TMS6_b;
         insn->funit = FU_S2;
-        make_reg(&insn->Op1, bits_ucst(code, 18, 5), bits_check(code, 12));
+        make_reg(&insn->Op1, bits_ucst(code, 18, 5), true);
         return insn->size;
     case Sunit_8:
         insn->itype = bits_check(code, 18) ? TMS6_bnrp: TMS6_birp;
@@ -1507,7 +1508,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
     case Sunit_11:
         insn->itype = TMS6_bnop;
         insn->funit = FU_S2;
-        make_reg(&insn->Op1, bits_ucst(code, 18, 5), bits_check(code, 12));
+        make_reg(&insn->Op1, bits_ucst(code, 18, 5), true);
         make_imm(&insn->Op2, bits_ucst(code, 13, 3));
         return insn->size;
     case Sunit_12:

@@ -1,6 +1,7 @@
 #include "tms66x.h"
 #include "ua.hpp"
 #include "fetch_packet.h"
+#include "bits.h"
 
 class out_tms320c66x_t : public outctx_t
 {
@@ -203,15 +204,11 @@ bool out_tms320c66x_t::out_operand(const op_t& x)
 
 		case o_imm:
 		{
-			sval_t v = (sval_t)(x.value);
-			out_tagon(COLOR_NUMBER);
-			if (v > -32 && v < 32)
-				out_btoa(v, 10);
+			int v = check_scts(x.value, 32);
+			if (v >= 0)
+				out_value(x, OOFS_IFSIGN | OOFW_IMM);
 			else
-				out_btoa(v, 16);
-			out_tagoff(COLOR_NUMBER);
-			//sign = x.type == o_signed ? OOF_SIGNED : 0;
-			//out_value(x, OOFS_IFSIGN | OOFW_IMM | sign);
+				out_value(x, OOFS_IFSIGN | OOFW_IMM | OOF_SIGNED);
 			break;
 		}
 
@@ -271,7 +268,7 @@ bool out_tms320c66x_t::out_operand(const op_t& x)
 		}
 		case o_near:
 		{
-			ea_t go_addr = x.addr & (~0x1F);
+			ea_t go_addr = x.addr;
 			if (out_name_expr(x, go_addr, go_addr))
 			{
 				//out_symbol('+');
@@ -303,7 +300,7 @@ void out_tms320c66x_t::out_mnem(void)
 	{
 		if (this->insn.itype == jump_ins[i])
 		{
-			out_line(Instructions[this->insn.itype].name, COLOR_PREFIX);
+			out_line(Instructions[this->insn.itype].name, COLOR_NUMBER);
 			out_spaces(16);
 			return;
 		}

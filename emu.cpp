@@ -49,7 +49,8 @@ static bool check_func_2(const insn_t* insn)
             || type == TMS6_stb || type == TMS6_stbu || type == TMS6_sth
             || type == TMS6_sthu || type == TMS6_stw)
         {
-            if (next_ins.Op2.type == o_displ && next_ins.Op2.reg == rB15)
+            //是否符合*B15--[ucst5]模式
+            if (next_ins.Op2.type == o_displ && next_ins.Op2.reg == rB15 && next_ins.Op2.mode == MO_UCST_SUBSUB)
                 return true;
         }
         //sub b15, 4, b15
@@ -75,14 +76,12 @@ static int code_quote(const insn_t* insn)
     }
     if (insn->itype == TMS6_bnop || insn->itype == TMS6_b)
     {
-
-
         bool check1, check2;
 
         check1 = check_func_1(insn);
         check2 = check_func_2(insn);
 
-        if(check2 || check1)
+        if(check2 && check1)
             insn->add_cref(insn->Op1.addr, insn->Op1.offb, fl_CN);
     }
     return 1;
@@ -104,7 +103,7 @@ static void handle_operand(const insn_t* insn, const op_t* x, bool isload)
             data_quote(insn, x);
         break;
     case o_near:
-        //code_quote(insn, x);
+        insn->add_cref(x->addr, x->offb, fl_JN);
         break;
     }
 }
@@ -115,11 +114,6 @@ int emu(const insn_t* insn)
 	update_fetch_packet(insn->ea, &fp);
     uint32 Feature = insn->get_canon_feature(ph);    //get instruction's CF_XX flags
 
-    if (get_ins_type(insn->ea, &fp) != OPCODE_TYPE_32_BIT)
-    {
-        add_cref(insn->ea, insn->ea + insn->size, fl_F);	//相邻指令引用
-        return 1;
-    }
     code_quote(insn);
 
 	flags_t F = get_flags(insn->ea);
