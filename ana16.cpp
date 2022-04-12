@@ -252,8 +252,9 @@ static void swap_op1_and_op2(insn_t *insn)
 #define WORD_INS (dt_word << 20)	//2 byte
 #define DWORD_INS (dt_dword << 20)	//4 byte
 #define QWORD_INS (dt_qword << 20)	//8 byte
-static filter_table_t g_ld_st[22] =
+static filter_table_t g_ldst[22] =
 {
+	//dsz sz ld/st na
 	//type的低16bit为指令类型，load ins flag在20bit, 寻址位宽在21bit-24bit
 	{ "0..00.", TMS6_stw | DWORD_INS },
 	{ "0..01.", TMS6_ldw | LOAD_INS | DWORD_INS },
@@ -279,7 +280,7 @@ static filter_table_t g_ld_st[22] =
 	{ "1..011", TMS6_ldndw | LOAD_INS | QWORD_INS},
 };
 
-static int make_ld_st(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
+static int make_ldst(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 {
 	//【op.mode】
 	//00:0000 * -R[cst]
@@ -298,62 +299,55 @@ static int make_ld_st(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 	//13:1101 * ++Rb[Ro]
 	//14:1110 * Rb--[Ro]
 	//15:1111 * Rb++[Ro]
-	char ins_type, sz, ld_st, offset, src_dst, src1, ptr, t, s, na;
+	char ins_type, offset, src_dst, src1, ptr;
 
 	switch (ctype)
 	{
 	case TMSC6L_Doff4:
 	case TMSC6L_Doff4DW:
-		offset = ((code >> 8) & 0x8) | ((code >> 13) & 7);
+		offset = bits_ucst(code, 11, 1, 3) | bits_ucst(code, 13, 3);
 		insn->Op1.mode = 1;
 		insn->Op1.type = o_displ;
 		break;
 	case TMSC6L_Dind:
 	case TMSC6L_DindDw:
-		offset = (code >> 13) & 7;
+		offset = bits_ucst(code, 13, 3);
 		insn->Op1.mode = 5;
 		insn->Op1.type = o_phrase;
 		break;
 	case TMSC6L_Dinc:
 	case TMSC6L_DincDw:
-		offset = ((code >> 13) & 1) + 1;
+		offset = bits_ucst(code, 13, 1) + 1;
 		insn->Op1.mode = 11;
 		insn->Op1.type = o_displ;
 		break;
 	case TMSC6L_Ddec:
 	case TMSC6L_DdecDw:
-		offset = ((code >> 13) & 1) + 1;
+		offset = bits_ucst(code, 13, 1) + 1;
 		insn->Op1.mode = 8;
 		insn->Op1.type = o_displ;
 		break;
 	}
 	
-	t = (code >> 12) & 1;
-	sz = (code >> 9) & 1;
-	ptr = ((code >> 7) & 3) + 4;
-	src_dst = (code >> 4) & 7;
-	na = (code >> 4) & 1;
-	ld_st = (code >> 3) & 1;
-	s = code & 1;
+	ptr = bits_ucst(code, 7, 2) + 4;	//reg from A4-A7
+	src_dst = bits_ucst(code, 4, 3);
 
-	ins_type = (fph->dsz << 3) | (sz << 2) | (ld_st << 1) | ((code >> 4) & 1);
-	int itype = filter(g_ld_st, 22, ins_type);
+	ins_type = (fph->dsz << 3) | bits_ucst(code, 9, 1, 2) | bits_ucst(code, 3, 1, 1) | bits_ucst(code, 4, 1);
+	int itype = filter(g_ldst, 22, ins_type);
 	insn->itype = itype & 0xFFFF;
 
 	if (insn->itype == TMS6_stdw || insn->itype == TMS6_lddw || insn->itype == TMS6_stndw || insn->itype == TMS6_ldndw)
 		src_dst |= 6;
 		
-
 	if (insn->Op1.type == o_displ)
 	{
-		make_displ(&insn->Op1, ptr, offset, s, false);
-		make_reg(&insn->Op2, src_dst, t, false);
+		make_displ(&insn->Op1, ptr, offset, bits_check(code, 0), false);
+		make_reg(&insn->Op2, src_dst, bits_check(code, 12), false);
 	}
 	else
 	{
-		//o_phrase
-		make_phrase(&insn->Op1, ptr, offset, s, s, false);
-		make_reg(&insn->Op2, src_dst, t, false);
+		make_phrase(&insn->Op1, ptr, offset, bits_check(code, 0), bits_check(code, 0), false);
+		make_reg(&insn->Op2, src_dst, bits_check(code, 12), false);
 	}
 	insn->Op1.dtype = (itype >> 20) & 0xF;
 
@@ -363,8 +357,11 @@ static int make_ld_st(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 	if ((itype & LOAD_INS) != LOAD_INS)
 		swap_op1_and_op2(insn);	//store ins swap oprand
 
+	insn->funit = bits_check(code, 0) ? FU_D2 : FU_D1;
+	insn->cflags |= aux_ldst;
+	if (bits_check(code, 12))
+		insn->cflags |= aux_t2;
 	insn->size = 2;
-	insn->funit = s ? FU_D2 : FU_D1;
 	return 2;
 }
 
@@ -460,7 +457,7 @@ static int d_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 	case TMSC6L_DincDw:
 	case TMSC6L_Ddec:
 	case TMSC6L_DdecDw:
-		return make_ld_st(insn, ctype, code, fph);
+		return make_ldst(insn, ctype, code, fph);
 	case TMSC6L_Dstk:
 		offset = bits_ucst(code, 7, 3, 2) | bits_ucst(code, 13, 2);
 		src_dst = bits_ucst(code, 4, 3);
@@ -480,6 +477,9 @@ static int d_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 			swap_op1_and_op2(insn);
 		}
 		insn->funit = bits_check(code, 0) ? FU_D2 : FU_D1;
+		insn->cflags |= aux_ldst;
+		if (bits_check(code, 12))
+			insn->cflags |= aux_t2;
 		insn->size = 2;
 		return 2;
 	case TMSC6L_Dx2op:
@@ -525,7 +525,7 @@ static int d_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		offset = bits_ucst(code, 13, 1) + 1;
 		src_dst = bits_ucst(code, 7, 4);
 		make_displ(&insn->Op1, rB15, offset, false, false);
-		make_reg(&insn->Op2, src_dst, bits_ucst(code, 12, 2), false);
+		make_reg(&insn->Op2, src_dst, bits_check(code, 12), false);
 		switch (bits_ucst(code, 14, 2))
 		{
 		case 0:
@@ -554,6 +554,9 @@ static int d_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 			break;
 		}
 		insn->funit = bits_check(code, 0) ? FU_D2 : FU_D1;
+		insn->cflags |= aux_ldst;
+		if (bits_check(code, 12))
+			insn->cflags |= aux_t2;
 		insn->size = 2;
 		return 2;
 	}

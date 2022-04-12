@@ -530,15 +530,15 @@ static void make_pseudo(insn_t* insn)
             insn->cflags |= aux_pseudo;
         }
         break;
-    case TMS6_mvk:
-        if (insn->Op1.type == o_imm && insn->Op1.value == 0)
-        {
-            insn->itype = TMS6_zero;
-            swap_op1_and_op2(insn);
-            insn->Op2.type = o_void;
-            insn->cflags |= aux_pseudo;
-        }
-        break;
+    //case TMS6_mvk:
+    //    if (insn->Op1.type == o_imm && insn->Op1.value == 0)
+    //    {
+    //        insn->itype = TMS6_zero;
+    //        swap_op1_and_op2(insn);
+    //        insn->Op2.type = o_void;
+    //        insn->cflags |= aux_pseudo;
+    //    }
+    //    break;
     }
 }
 
@@ -575,7 +575,8 @@ static int table_insns(
     
     make_pseudo(&insn);
 
-    if (src2_first && insn.Op1.type != o_void && insn.Op2.type != o_void)
+    //有3个操作数且src2在src1前的情况，交换op1和op2
+    if (src2_first && insn.Op1.type != o_void && insn.Op2.type != o_void && insn.Op3.type != o_void)
         swap_op1_and_op2(&insn);
     
 	return insn.size;
@@ -1268,8 +1269,6 @@ static int nopred_ops(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
             if (p->unit == FU_M1 || p->unit == FU_L1 || p->itype == TMS6_rpack2)
                 other = bits_check(code, 12);
             int size = table_insns(*insn, code, (tmsinsn_t*)p, other, fp, false);
-            if (p->src1 == t_b14)
-                insn->cflags &= ~aux_xp;
             return size;
         }
     }
@@ -1320,22 +1319,20 @@ static int load_store_ops(insn_t* insn, int ctype, uint32_t code, fetch_packet_t
     if (ctype == Dunit_5)
     {
         baseR = rA15;
-        if (insn->itype == TMS6_ldbu || insn->itype == TMS6_ldhu)
-            offsetR = bits_ucst(code, 8, 15) << ld->shift;
-        else
-            offsetR = bits_scst(code, 8, 15) << ld->shift;
+        offsetR = bits_ucst(code, 8, 15) << ld->shift;
         insn->Op1.mode = MO_ADD_REG;
         is_displ = true;
     }
     else
     {
         baseR = bits_ucst(code, 18, 5);
-        offsetR = bits_scst(code, 13, 5);
+        offsetR = bits_ucst(code, 13, 5);
         insn->Op1.mode = bits_ucst(code, 9, 4);
         if (insn->Op1.mode == MO_SUB_UCST || insn->Op1.mode == MO_ADD_UCST ||
             insn->Op1.mode == MO_SUBSUB_UCST || insn->Op1.mode == MO_ADDADD_UCST ||
             insn->Op1.mode == MO_UCST_SUBSUB || insn->Op1.mode == MO_UCST_ADDADD)
             is_displ = true;
+            
         //todo: if <<=, should set offset flag
         //if(is_displ)
         //    offsetR <<= ld->shift;
@@ -1352,12 +1349,16 @@ static int load_store_ops(insn_t* insn, int ctype, uint32_t code, fetch_packet_t
     else
         make_reg(&insn->Op2, bits_ucst(code, 23, 5), bits_check(code, 1));
 
-    if (insn->itype == TMS6_stb || insn->itype == TMS6_sth || 
-        insn->itype == TMS6_stw || insn->itype == TMS6_stdw || 
+    if (insn->itype == TMS6_stb || insn->itype == TMS6_sth ||
+        insn->itype == TMS6_stw || insn->itype == TMS6_stdw ||
         insn->itype == TMS6_stnw || insn->itype == TMS6_stndw)
         swap_op1_and_op2(insn);
 
-    insn->funit = bits_check(code, 1) ? FU_D2 : FU_D1;
+    //跟compact ins不一样，由y bit控制unit，由s bit控制t路径
+    insn->cflags |= aux_ldst;
+    if (bits_check(code, 1))
+        insn->cflags |= aux_t2;
+    insn->funit = bits_check(code, 7) ? FU_D2 : FU_D1;  //y bit
     return insn->size;
 }
 
@@ -1372,7 +1373,7 @@ static int d_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
     case Dunit_1:
         op = bits_ucst(code, 7, 6);
         table = &dunit1_ops[op];
-        return table_insns(*insn, code, table, bits_check(code, 1), fp, true);
+        return table_insns(*insn, code, table, false, fp, true);
     case Dunit_2:
         op = bits_ucst(code, 6, 6);
         table = &dms_ops[op];
@@ -1453,8 +1454,6 @@ static int s_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
 
     //unit set
     insn->funit = bits_check(code, 1) ? FU_S2 : FU_S1;
-    //cross path set
-    if (bits_check(code, 12)) insn->cflags |= aux_xp;
     switch (ctype)
     {
     case Sunit_1:
@@ -1472,12 +1471,20 @@ static int s_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
         make_reg(&insn->Op2, bits_ucst(code, 23, 5), bits_check(code, 1));
         return insn->size;
     case Sunit_4:
-        insn->funit = FU_S2;
-        insn->itype = TMS6_addkpc;
-        make_imm(&insn->Op1, bits_scst(code, 16, 7));
-        make_imm(&insn->Op2, bits_ucst(code, 13, 3));
-        make_reg(&insn->Op3, bits_ucst(code, 23, 5), true);
-        return insn->size;
+        op = bits_ucst(code, 6, 6);
+        table = &sunit1_ops[op];
+        if (table_insns(*insn, code, table, bits_check(code, 12), fp, false))
+        {
+            swap_op2_and_op3(insn); //addkpc src1, dst, src2
+            return insn->size;
+        }
+        return 0;
+        //insn->funit = FU_S2;
+        //insn->itype = TMS6_addkpc;
+        //make_imm(&insn->Op1, bits_scst(code, 16, 7));
+        //make_imm(&insn->Op2, bits_ucst(code, 13, 3));
+        //make_reg(&insn->Op3, bits_ucst(code, 23, 5), true);
+        //return insn->size;
     case Sunit_5:
         op = bits_ucst(code, 6, 6);
         table = &dms_ops[op];
@@ -1516,7 +1523,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
         make_near(&insn->Op1, fp->start, bits_scst(code, 7, 21), 2);
         return insn->size;
     case Sunit_13:
-        insn->itype = bits_check(code, 6) ? TMS6_mvkh : TMS6_mvkl;
+        insn->itype = bits_check(code, 6) ? TMS6_mvkh : TMS6_mvk;
         make_imm(&insn->Op1, bits_scst(code, 7, 16));
         make_reg(&insn->Op2, bits_ucst(code, 23, 5), bits_check(code, 1));
         return insn->size;
@@ -1548,21 +1555,31 @@ static int n_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
 
 	if (ctype == Nunit_3 || ctype == Nunit_4)
 	{
-        if(op == 12 || op == 13 || op == 14)
-            make_imm(&insn->Op1, bits_ucst(code, 23, 5));
+        if(op == 12 || op == 13 || op == 14)    //sploop ins
+            make_imm(&insn->Op1, bits_ucst(code, 23, 5) + 1);
 		switch (op)
 		{
 		case 8://spmask-op is 1000, error in doc
 		case 9:
 			make_spmask(&insn->Op1, bits_ucst(code, 18, 8));
 			insn->itype = op == 8 ? TMS6_spmask : TMS6_spmaskr;
+            break;
 		case 10:
 			make_stgcyc(&insn->Op1, bits_ucst(code, 22, 6));
 			insn->itype = TMS6_spkernel;
-		case 11:   insn->itype = TMS6_spkernelr;
-        case 12:   insn->itype = TMS6_sploop;
-        case 13:   insn->itype = TMS6_sploopd;
-        case 14:   insn->itype = TMS6_sploopw;
+            break;
+		case 11:   
+            insn->itype = TMS6_spkernelr;
+            break;
+        case 12:   
+            insn->itype = TMS6_sploop;
+            break;
+        case 13:   
+            insn->itype = TMS6_sploopd;
+            break;
+        case 14:   
+            insn->itype = TMS6_sploopw;
+            break;
 		}
         return insn->size;
 	}
@@ -1628,6 +1645,21 @@ static void printf_insn(insn_t* insn)
     msg("******************\n");
 }
 
+static void check_cross_path(insn_t* insn)
+{
+    switch (insn->itype)
+    {
+    case TMS6_mvc:
+    case TMS6_bpos:
+    case TMS6_bdec:
+    case TMS6_extu:
+    case TMS6_ext:
+    case TMS6_set:
+    case TMS6_clr:
+        insn->cflags &= ~aux_xp;
+    }
+}
+
 int idaapi ana32(insn_t* insn, fetch_packet_t* fp)
 {
 	if ((insn->ea & 3) != 0)	//4 bytes align
@@ -1650,9 +1682,12 @@ int idaapi ana32(insn_t* insn, fetch_packet_t* fp)
     if (ret > 0)
         insn->cond = bits_ucst(code, 28, 4);//cond set
 
+    //check some ins no cross path flag
+    check_cross_path(insn);
+
     if (ret > 0 && bits_check(code, 0))
         insn->cflags |= aux_para;   //parallel set
-    msg("%X: ctype:%d  ret:%d\n", insn->ea, ins_ctype, ret);
+    //msg("%X: ctype:%d  ret:%d\n", insn->ea, ins_ctype, ret);
     //printf_insn(insn);
     return ret;
 }

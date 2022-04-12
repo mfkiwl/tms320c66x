@@ -1,5 +1,6 @@
 #include "fetch_packet.h"
 #include <bytes.hpp>
+#include "bits.h"
 
 int get_ins_type(adr_t adr, fetch_packet_t* fp)
 {
@@ -19,14 +20,14 @@ bool is_in_fetch_packet(adr_t adr, fetch_packet_t* fp)
 static void get_fetch_packet_header(adr_t fph_adr,  uint32_t fph_code, fp_header_t* fph)
 {
     fph->adr = fph_adr;
-    fph->magic = (fph_code >> 28) & 0xF;
-    fph->layout = (fph_code >> 21) & 0x7F;
-    fph->prot = (fph_code >> 20) & 1;
-    fph->rs = (fph_code >> 19) & 1;
-    fph->dsz = (fph_code >> 18) & 3;
-    fph->br = (fph_code >> 15) & 1;
-    fph->sat = (fph_code >> 14) & 1;
-    fph->p_bits = fph_code & 0x3FFF;
+    fph->magic = bits_ucst(fph_code, 28, 4);    //(fph_code >> 28) & 0xF;
+    fph->layout = bits_ucst(fph_code, 21, 7);   //(fph_code >> 21) & 0x7F;
+    fph->prot = bits_ucst(fph_code, 20, 1);     //(fph_code >> 20) & 1;
+    fph->rs = bits_ucst(fph_code, 19, 1);       //(fph_code >> 19) & 1;
+    fph->dsz = bits_ucst(fph_code, 16, 3);      //(fph_code >> 16) & 7;
+    fph->br = bits_ucst(fph_code, 15, 1);       //(fph_code >> 15) & 1;
+    fph->sat = bits_ucst(fph_code, 14, 1);      //(fph_code >> 14) & 1;
+    fph->p_bits = bits_ucst(fph_code, 0, 14);   //fph_code & 0x3FFF;
 }
 
 void update_fetch_packet(adr_t adr, fetch_packet_t* fp)

@@ -71,7 +71,7 @@ bool is_first_insn_in_exec_packet(ea_t ea)
 		return true;
 	if (insn.cflags & aux_fph)	//fetch packet header需要被忽略
 		return is_first_insn_in_exec_packet(prev_ins_ea);
-	return insn.cflags & aux_para;
+	return (insn.cflags & aux_para) != aux_para;
 }
 
 struct ii_info_t
@@ -147,7 +147,7 @@ void out_tms320c66x_t::out_pre_mode(int mode)
 		break;
 	case 0x01:  // 0001 *+R[cst]
 	case 0x05:  // 0101 *+Rb[Ro]
-//      out_symbol('+');
+		out_symbol('+');
 		break;
 	case 0x0A:  // 1010 *R--[cst]
 	case 0x0B:  // 1011 *R++[cst]
@@ -204,11 +204,19 @@ bool out_tms320c66x_t::out_operand(const op_t& x)
 
 		case o_imm:
 		{
-			int v = check_scts(x.value, 32);
-			if (v >= 0)
+			if (this->insn.itype == TMS6_mvk || this->insn.itype == TMS6_mvkl ||
+				this->insn.itype == TMS6_mvkh || this->insn.itype == TMS6_mvklh)
+			{
 				out_value(x, OOFS_IFSIGN | OOFW_IMM);
+			}
 			else
-				out_value(x, OOFS_IFSIGN | OOFW_IMM | OOF_SIGNED);
+			{
+				int v = check_scts(x.value, 32);
+				if (v >= 0)
+					out_value(x, OOFS_IFSIGN | OOFW_IMM);
+				else
+					out_value(x, OOFS_IFSIGN | OOFW_IMM | OOF_SIGNED);
+			}
 			break;
 		}
 
@@ -326,7 +334,7 @@ void out_tms320c66x_t::out_insn(void)
 	}
 
 	//输出并行符号
-	if (is_first_insn_in_exec_packet(this->insn.ea))
+	if (is_first_insn_in_exec_packet(this->insn.ea) == false)
 	{
 		this->out_symbol('|');
 		this->out_symbol('|');
@@ -366,12 +374,24 @@ void out_tms320c66x_t::out_insn(void)
 	else
 		this->out_line("   ");
 
+
 	//输出交叉路径
-	if (this->insn.cflags & aux_xp)
-		this->out_keyword("X");
+	if (this->insn.cflags & aux_ldst)
+	{
+		//load store ins 特殊处理
+		if (this->insn.cflags & aux_t2)
+			this->out_keyword("T2");
+		else
+			this->out_keyword("T1");
+	}
 	else
-		this->out_char(' ');
-	this->out_line("   ");
+	{
+		if (this->insn.cflags & aux_xp)
+			this->out_keyword("X ");
+		else
+			this->out_char('  ');
+	}
+	this->out_line("  ");
 
 	//输出操作数
 	//有限处理4个操作数时的第一个操作数
@@ -402,7 +422,7 @@ void out_tms320c66x_t::out_insn(void)
 
 	//输出注释，该函数作用输出字符形式的立即数
 	//如MVK.S1    2Ah, A4 ; '*'
-	//this->out_immchar_cmts();
+	this->out_immchar_cmts();
 
 	//刷新输出行
 	this->flush_outbuf();

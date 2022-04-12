@@ -99,12 +99,14 @@ enum cond_t : uint8_t
 
 //------------------------------------------------------------------
 #define cflags auxpref_u8[1]      // Various bit definitions:
-// 额外的flag，ana中需要为insn设置该值，
+// 额外的cflags，ana中需要为insn设置该值，
 #define aux_para      0x0001  // parallel execution with the next insn
 #define aux_xp        0x0002  // X path is used
 #define aux_src2      0x0004  // 是否为4个操作数的指令
 #define aux_fph       0x0008  // fetch packet header
 #define aux_pseudo    0x0010  // pseudo ins(伪指令)
+#define aux_ldst      0x0020  // load和store指令
+#define aux_t2        0x0040  // load和store指令是否使用T2
 
 //------------------------------------------------------------------
 enum RegNo : uint16_t
