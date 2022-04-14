@@ -75,6 +75,8 @@ static int code_quote(const insn_t* insn)
         return 1;
     }
 
+    return 0;
+
     if (insn->itype == TMS6_bnop || insn->itype == TMS6_b)
     {
         bool check1, check2;

@@ -308,7 +308,7 @@ void out_tms320c66x_t::out_mnem(void)
 	{
 		if (this->insn.itype == jump_ins[i])
 		{
-			out_line(Instructions[this->insn.itype].name, COLOR_ASMDIR);
+			out_line(Instructions[this->insn.itype].name, COLOR_VOIDOP);
 			out_spaces(16);
 			return;
 		}
@@ -316,7 +316,7 @@ void out_tms320c66x_t::out_mnem(void)
 
 	if (this->insn.itype < TMS6_last)
 	{
-		out_line(Instructions[this->insn.itype].name, COLOR_CODNAME);
+		out_line(Instructions[this->insn.itype].name, COLOR_REGCMT);
 		out_spaces(16);
 	}
 	else
@@ -328,7 +328,7 @@ void out_tms320c66x_t::out_insn(void)
 	//[parallel] [cond] ins .[unit][cross path][op1], [op2], [op3]
 	if (this->insn.cflags & aux_fph)
 	{
-		this->out_line("   fetch packet header");
+		this->out_line("        fetch packet header", COLOR_MACRO);
 		this->flush_outbuf(-2);
 		return;
 	}
