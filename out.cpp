@@ -308,7 +308,7 @@ void out_tms320c66x_t::out_mnem(void)
 	{
 		if (this->insn.itype == jump_ins[i])
 		{
-			out_line(Instructions[this->insn.itype].name, COLOR_NUMBER);
+			out_line(Instructions[this->insn.itype].name, COLOR_ASMDIR);
 			out_spaces(16);
 			return;
 		}
@@ -316,11 +316,11 @@ void out_tms320c66x_t::out_mnem(void)
 
 	if (this->insn.itype < TMS6_last)
 	{
-		out_line(Instructions[this->insn.itype].name);
+		out_line(Instructions[this->insn.itype].name, COLOR_CODNAME);
 		out_spaces(16);
 	}
 	else
-		out_line("error");
+		out_line("error", COLOR_ERROR);
 }
 
 void out_tms320c66x_t::out_insn(void)
@@ -328,8 +328,8 @@ void out_tms320c66x_t::out_insn(void)
 	//[parallel] [cond] ins .[unit][cross path][op1], [op2], [op3]
 	if (this->insn.cflags & aux_fph)
 	{
-		this->out_line("        fetch packet header");
-		this->flush_outbuf();
+		this->out_line("   fetch packet header");
+		this->flush_outbuf(-2);
 		return;
 	}
 
@@ -389,7 +389,7 @@ void out_tms320c66x_t::out_insn(void)
 		if (this->insn.cflags & aux_xp)
 			this->out_keyword("X ");
 		else
-			this->out_char('  ');
+			this->out_line("  ");
 	}
 	this->out_line("  ");
 
@@ -425,5 +425,5 @@ void out_tms320c66x_t::out_insn(void)
 	this->out_immchar_cmts();
 
 	//Ë¢ÐÂÊä³öÐÐ
-	this->flush_outbuf();
+	this->flush_outbuf(-2);
 }

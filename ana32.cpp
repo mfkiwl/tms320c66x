@@ -644,7 +644,7 @@ static tmsinsn_t dms_ops[64] =
     { TMS6_spack2, t_int, t_xint, t_s2 },           //110010
     { TMS6_saddu4, t_u4, t_xu4, t_u4 },             //110011
     { TMS6_spacku4, t_s2, t_xs2, t_u4 },            //110100
-    { TMS6_null, t_none, t_none, t_none },          //110101
+    { TMS6_sub, t_sint, t_xsint, t_sint },          //110101
     { TMS6_andn, t_uint, t_xuint, t_uint },         //110110
     { TMS6_shr2, t_uint, t_xs2, t_s2 },             //110111
     { TMS6_shru2, t_uint, t_xu2, t_u2 },            //111000
@@ -1319,7 +1319,8 @@ static int load_store_ops(insn_t* insn, int ctype, uint32_t code, fetch_packet_t
     if (ctype == Dunit_5)
     {
         baseR = rA15;
-        offsetR = bits_ucst(code, 8, 15) << ld->shift;
+        offsetR = bits_ucst(code, 8, 15);
+        //offsetR = bits_ucst(code, 8, 15) << ld->shift;
         insn->Op1.mode = MO_ADD_REG;
         is_displ = true;
     }

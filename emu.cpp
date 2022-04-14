@@ -74,6 +74,7 @@ static int code_quote(const insn_t* insn)
         insn->add_cref(insn->Op1.addr, insn->Op1.offb, fl_CN);
         return 1;
     }
+
     if (insn->itype == TMS6_bnop || insn->itype == TMS6_b)
     {
         bool check1, check2;
@@ -81,10 +82,14 @@ static int code_quote(const insn_t* insn)
         check1 = check_func_1(insn);
         check2 = check_func_2(insn);
 
-        if(check2 && check1)
+        if (check2 && check1)
+        {
             insn->add_cref(insn->Op1.addr, insn->Op1.offb, fl_CN);
+            return 1;
+        }
+            
     }
-    return 1;
+    return 0;
 }
 
 static void handle_operand(const insn_t* insn, const op_t* x, bool isload)
@@ -103,7 +108,8 @@ static void handle_operand(const insn_t* insn, const op_t* x, bool isload)
             data_quote(insn, x);
         break;
     case o_near:
-        insn->add_cref(x->addr, x->offb, fl_JN);
+        if(code_quote(insn) == 0)
+            insn->add_cref(x->addr, x->offb, fl_JN);
         break;
     }
 }
@@ -113,8 +119,6 @@ int emu(const insn_t* insn)
 	fetch_packet_t fp;
 	update_fetch_packet(insn->ea, &fp);
     uint32 Feature = insn->get_canon_feature(ph);    //get instruction's CF_XX flags
-
-    code_quote(insn);
 
 	flags_t F = get_flags(insn->ea);
 	if (Feature & CF_USE1) handle_operand(insn, &insn->Op1, true);
