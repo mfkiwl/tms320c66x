@@ -309,7 +309,7 @@ void out_tms320c66x_t::out_mnem(void)
 		if (this->insn.itype == jump_ins[i])
 		{
 			out_line(Instructions[this->insn.itype].name, COLOR_VOIDOP);
-			out_spaces(16);
+			out_spaces(18);
 			return;
 		}
 	}
@@ -317,7 +317,7 @@ void out_tms320c66x_t::out_mnem(void)
 	if (this->insn.itype < TMS6_last)
 	{
 		out_line(Instructions[this->insn.itype].name, COLOR_REGCMT);
-		out_spaces(16);
+		out_spaces(18);
 	}
 	else
 		out_line("error", COLOR_ERROR);

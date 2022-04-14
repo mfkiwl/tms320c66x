@@ -342,12 +342,12 @@ static int make_ldst(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 	if (insn->Op1.type == o_displ)
 	{
 		make_displ(&insn->Op1, ptr, offset, bits_check(code, 0), false);
-		make_reg(&insn->Op2, src_dst, bits_check(code, 12), false);
+		make_reg(&insn->Op2, src_dst, bits_check(code, 12), false);	//check t bit
 	}
 	else
 	{
 		make_phrase(&insn->Op1, ptr, offset, bits_check(code, 0), bits_check(code, 0), false);
-		make_reg(&insn->Op2, src_dst, bits_check(code, 12), false);
+		make_reg(&insn->Op2, src_dst, bits_check(code, 12), false);	//check t bit
 	}
 	insn->Op1.dtype = (itype >> 20) & 0xF;
 
@@ -464,7 +464,7 @@ static int d_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		make_displ(&insn->Op1, rB15, offset, false, false);
 		insn->Op1.dtype = dt_dword;
 		insn->Op1.mode = 1;
-		make_reg(&insn->Op2, src_dst, bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1), false);
+		make_reg(&insn->Op2, src_dst, bits_check(code, 12), false);	//check t bit
 		if (bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1))
 			insn->cflags |= aux_xp;
 		if (ld_st)
@@ -525,7 +525,7 @@ static int d_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		offset = bits_ucst(code, 13, 1) + 1;
 		src_dst = bits_ucst(code, 7, 4);
 		make_displ(&insn->Op1, rB15, offset, false, false);
-		make_reg(&insn->Op2, src_dst, bits_check(code, 12), false);
+		make_reg(&insn->Op2, src_dst, bits_check(code, 12), false);	//check t bit
 		switch (bits_ucst(code, 14, 2))
 		{
 		case 0:
