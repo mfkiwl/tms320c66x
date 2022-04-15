@@ -13,6 +13,7 @@ static void data_quote(const insn_t* insn, const op_t* x)
 }
 
 //在发生分支的地址后面delay slot内寻找是否有addkpc xx, B3, x操作
+//无条件B和BNOP应该是函数调用
 static bool check_func_1(const insn_t* insn)
 {
     insn_t next_ins;
@@ -20,12 +21,14 @@ static bool check_func_1(const insn_t* insn)
     int loop = 6;
     if (insn->itype == TMS6_bnop)
         loop -= insn->Op2.value;
-    while (loop > 0)
+    while (loop >= 0)
     {
         if (decode_insn(&next_ins, next_adr) == 0)
             break;
         if ((next_ins.cflags & aux_para) == 0)
             loop -= 1;
+        if (next_ins.cflags & aux_fph)
+            continue;
         if (next_ins.itype == TMS6_nop)
             loop -= next_ins.Op1.value;
         if (next_ins.itype == TMS6_addkpc && next_ins.Op2.reg == rB3)
@@ -75,21 +78,25 @@ static int code_quote(const insn_t* insn)
         return 1;
     }
 
-    return 0;
-
     if (insn->itype == TMS6_bnop || insn->itype == TMS6_b)
     {
+        if (is_func(get_flags(insn->ea)))
+            return 1;
+
+        if (insn->cond == 0)    //无条件B和BNOP认为是函数调用
+            return 1;
+
         bool check1, check2;
 
         check1 = check_func_1(insn);
-        check2 = check_func_2(insn);
+        //check2 = check_func_2(insn);
 
-        if (check2 && check1)
+        //if (check1 || check2)
+        if(check1)
         {
             insn->add_cref(insn->Op1.addr, insn->Op1.offb, fl_CN);
             return 1;
         }
-            
     }
     return 0;
 }
@@ -110,8 +117,11 @@ static void handle_operand(const insn_t* insn, const op_t* x, bool isload)
             data_quote(insn, x);
         break;
     case o_near:
-        if(code_quote(insn) == 0)
-            insn->add_cref(x->addr, x->offb, fl_JN);
+        if (code_quote(insn) == 0)
+        {
+            if(insn->itype != TMS6_addkpc)
+                insn->add_cref(x->addr, x->offb, fl_JN);
+        }
         break;
     }
 }

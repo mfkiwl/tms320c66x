@@ -658,7 +658,7 @@ static tmsinsn_t dms_ops[64] =
 };
 
 /*
-* 符合该格式的有Sunit_1
+* 符合该格式的有Sunit_1, op不包含111100(Sunit15)
 *    | 31 29 | 28 | 27 23 | 22 18 | 17 13 | 12 | 11 6 | 5 4 3 2 | 1 0 |
 *    |  creg |  z |  dst  |  src2 |  src1 |  x |  op  | 1 0 0 0 | s p |
 *    |   3   |  1 |   5   |   5   |   5   |  1 |   6  |         | 1 1 |
@@ -725,7 +725,7 @@ static const tmsinsn_t sunit1_ops[64] =
   { TMS6_cmpgtsp,t_sp,          t_xsp,          t_sint          }, // 11 1001
   { TMS6_cmpltsp,t_sp,          t_xsp,          t_sint          }, // 11 1010
   { TMS6_set,    t_uint,        t_xuint,        t_uint          }, // 11 1011
-  { TMS6_abssp,  t_none,        t_xsp,          t_sp            }, // 11 1100
+  { TMS6_null,   t_none,        t_none,         t_none          }, // 11 1100
   { TMS6_rcpsp,  t_none,        t_xsp,          t_sp            }, // 11 1101
   { TMS6_rsqrsp, t_none,        t_xsp,          t_sp            }, // 11 1110
   { TMS6_clr,    t_uint,        t_xuint,        t_uint          }, // 11 1111
@@ -740,12 +740,12 @@ static const tmsinsn_t sunit1_ops[64] =
 static const tmsinsn_t sunit15_ops[32] =
 {
                                           //BIT 17...13
-    { TMS6_null, t_none, t_none, t_none },      //00000
-    { TMS6_null, t_none, t_none, t_none },      //00001
+    { TMS6_abssp,  t_none,  t_xsp, t_sp },      //00000
+    { TMS6_intspu, t_none, t_xop, t_dst },      //00001
     { TMS6_unpklu4, t_none, t_xu4, t_u2 },      //00010
     { TMS6_unpkhu4, t_none, t_xu4, t_u2 },      //00011
-    { TMS6_null, t_none, t_none, t_none },      //00100
-    { TMS6_null, t_none, t_none, t_none },      //00101
+    { TMS6_spint, t_none, t_xop, t_dst },       //00100
+    { TMS6_intsp, t_none, t_xop, t_dst },       //00101
     { TMS6_unpkhu2, t_none, t_xop, t_dwdst },   //00110
     { TMS6_unpkh2, t_none, t_xop, t_dwdst },    //00111
     { TMS6_unpkbu4, t_none, t_xop, t_dwdst },   //01000
@@ -758,10 +758,10 @@ static const tmsinsn_t sunit15_ops[32] =
     { TMS6_null, t_none, t_none, t_none },      //01111
     { TMS6_dspinth, t_none, t_xdwop, t_dwdst }, //10000
     { TMS6_dintspu, t_none, t_xop, t_dwdst },   //10001
-    { TMS6_dinthsp, t_none, t_xop, t_dwdst },   //10010
+    { TMS6_null, t_none, t_none, t_none },      //10010
     { TMS6_dinthspu,t_none, t_xop, t_dwdst },   //10011
     { TMS6_dspint, t_none, t_xdwop, t_dwdst },  //10100
-    { TMS6_null, t_none, t_none, t_none },      //10101
+    { TMS6_dinthsp, t_none, t_xop, t_dwdst },   //10101
     { TMS6_null, t_none, t_none, t_none },      //10110
     { TMS6_null, t_none, t_none, t_none },      //10111
     { TMS6_null, t_none, t_none, t_none },      //11000
@@ -1001,7 +1001,7 @@ static const tmsinsn_t lsunit_ops[128] =
   { TMS6_intdp,  t_none,        t_xsint,        t_dp            }, // 011 1001
   { TMS6_null,   t_none,        t_none,         t_none          }, // 011 1010
   { TMS6_intdpu, t_none,        t_xuint,        t_dp            }, // 011 1011
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 011 1100
+  { TMS6_faddsp, t_op1,         t_xop2,         t_dst           }, // 011 1100
   { TMS6_fsubsp, t_op1,         t_xop2,         t_dst           }, // 011 1101
   { TMS6_null,   t_none,        t_none,         t_none          }, // 011 1110
   { TMS6_subu,   t_xuint,       t_uint,         t_ulong         }, // 011 1111
@@ -1054,7 +1054,7 @@ static const tmsinsn_t lsunit_ops[128] =
   // it as ucst1 so that the result would be correct for the assembler
   { TMS6_lmbd,   t_ucst1,       t_xuint,        t_uint          }, // 110 1010
   { TMS6_lmbd,   t_uint,        t_xuint,        t_uint          }, // 110 1011
-  { TMS6_null,   t_none,        t_none,         t_none          }, // 110 1100
+  { TMS6_dmv,    t_op1,         t_xop2,         t_dwdst         }, // 110 1100
   { TMS6_null,   t_none,        t_none,         t_none          }, // 110 1101
   { TMS6_xor,    t_scst5,       t_xuint,        t_uint          }, // 110 1110
   { TMS6_xor,    t_uint,        t_xuint,        t_uint          }, // 110 1111
@@ -1145,7 +1145,7 @@ static const tmsinsn_indexed_t nopreds[] =
   { TMS6_dcmpeq4,  t_dwop1,     t_xdwop2,       t_dst,   0x1C8, 0x3FF, FU_S1 },
   { TMS6_dcmpgt2,  t_dwop1,     t_xdwop2,       t_dst,   0x148, 0x3FF, FU_S1 },
   { TMS6_dcmpgtu4, t_dwop1,     t_xdwop2,       t_dst,   0x158, 0x3FF, FU_S1 },
-  { TMS6_dmvd,     t_op1,       t_xop2,         t_dwdst, 0x3C,  0x3FF, FU_S1 },
+  { TMS6_dmvd,     t_op1,       t_xop2,         t_dwdst, 0x33C, 0x3FF, FU_S1 },
   { TMS6_dpackh2,  t_dwop1,     t_xdwop2,       t_dwdst, 0x98,  0x3FF, FU_S1 },
   { TMS6_dpackhl2, t_dwop1,     t_xdwop2,       t_dwdst, 0x88,  0x3FF, FU_S1 },
   { TMS6_dpackl2,  t_dwop1,     t_xdwop2,       t_dwdst, 0x3FC, 0x3FF, FU_S1 },
@@ -1170,6 +1170,10 @@ static const tmsinsn_indexed_t nopreds[] =
   { TMS6_dsubsp,   t_dwop1,     t_xdwop1,       t_dwdst, 0x2D8, 0x3FF, FU_S1 },
   { TMS6_shl2,     t_op2,       t_xop1,         t_dst,   0x138, 0x3FF, FU_S1 },
   { TMS6_shl2,     t_ucst5,     t_xop1,         t_dst,   0x38,  0x3FF, FU_S1 },
+  { TMS6_or,       t_dwop1,     t_xdwop2,       t_dwdst, 0x1B8, 0x3FF, FU_S1 },
+  { TMS6_and,      t_dwop1,     t_xdwop2,       t_dwdst, 0x1F8, 0x3FF, FU_S1 },
+  { TMS6_xor,      t_dwop1,     t_xdwop2,       t_dwdst, 0xB8,  0x3FF, FU_S1 },
+  { TMS6_xor,      t_scst5,     t_xdwop2,       t_dwdst, 0xA8,  0x3FF, FU_S1 },
 
   { TMS6_addab,    t_b14,       t_ucst15,       t_uint,  0x00F, 0x01F, FU_D1 },
   { TMS6_addad,    t_b14,       t_ucst15,       t_uint,  0x010, 0x01F, FU_D1 },
@@ -1206,6 +1210,10 @@ static const tmsinsn_indexed_t nopreds[] =
   { TMS6_dsub,     t_dwop1,     t_xdwop2,       t_dwdst, 0x3E,  0x3FF, FU_L1 },
   { TMS6_dsub2,    t_dwop1,     t_xdwop2,       t_dwdst, 0x26,  0x3FF, FU_L1 },
   { TMS6_dsubsp,   t_dwop1,     t_xdwop2,       t_dwdst, 0x1EE, 0x3FF, FU_L1 },
+  { TMS6_or,       t_dwop1,     t_xdwop2,       t_dwdst, 0x3FE, 0x3FF, FU_L1 },
+  { TMS6_and,      t_dwop1,     t_xdwop2,       t_dwdst, 0x3DE, 0x3FF, FU_L1 },
+  { TMS6_xor,      t_dwop1,     t_xdwop2,       t_dwdst, 0x37E, 0x3FF, FU_L1 },
+  { TMS6_xor,      t_scst5,     t_xdwop2,       t_dwdst, 0x376, 0x3FF, FU_L1 },
 
   { TMS6_cmpy,     t_s2,        t_xs2,          t_dint,  0x0AC, 0x3FF, FU_M1 },
   { TMS6_cmpyr,    t_s2,        t_xs2,          t_s2,    0x0BC, 0x3FF, FU_M1 },

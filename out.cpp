@@ -10,7 +10,7 @@ public:
 	bool out_operand(const op_t& x);
 	void out_mnem(void);
 	void out_insn(void);
-	void outreg(int r) { if(r >= 0 && r < ph.regs_num) out_register(ph.reg_names[r]); }
+	void outreg(int r);
 	void out_pre_mode(int mode);
 	void out_post_mode(int mode);
 	void print_stg_cyc(ea_t ea, int stgcyc);
@@ -183,6 +183,25 @@ void out_tms320c66x_t::out_post_mode(int mode)
 	}
 }
 
+void out_tms320c66x_t::outreg(int r)
+{
+	if (r >= 0 && r < ph.regs_num)
+	{
+		if (r == rB3)
+		{
+			out_line(ph.reg_names[r], COLOR_VOIDOP);
+		}
+		else if (r == rB15)
+		{
+			out_line(ph.reg_names[r], COLOR_LIBNAME);
+		}
+		else
+		{
+			out_register(ph.reg_names[r]);
+		}
+	}
+}
+
 bool out_tms320c66x_t::out_operand(const op_t& x)
 {
 	uchar sign;
@@ -204,10 +223,16 @@ bool out_tms320c66x_t::out_operand(const op_t& x)
 
 		case o_imm:
 		{
-			if (this->insn.itype == TMS6_mvk || this->insn.itype == TMS6_mvkl ||
-				this->insn.itype == TMS6_mvkh || this->insn.itype == TMS6_mvklh)
+			if (this->insn.itype == TMS6_mvk || this->insn.itype == TMS6_mvkl)
 			{
 				out_value(x, OOFS_IFSIGN | OOFW_IMM);
+			}
+			else if (this->insn.itype == TMS6_mvkh || this->insn.itype == TMS6_mvklh)
+			{
+				op_t tmp;
+				memcpy(&tmp, &x, sizeof(op_t));
+				tmp.value <<= 16;
+				out_value(tmp, OOFS_IFSIGN | OOFW_IMM);
 			}
 			else
 			{
@@ -309,7 +334,7 @@ void out_tms320c66x_t::out_mnem(void)
 		if (this->insn.itype == jump_ins[i])
 		{
 			out_line(Instructions[this->insn.itype].name, COLOR_VOIDOP);
-			out_spaces(18);
+			out_spaces(19);
 			return;
 		}
 	}
@@ -317,7 +342,7 @@ void out_tms320c66x_t::out_mnem(void)
 	if (this->insn.itype < TMS6_last)
 	{
 		out_line(Instructions[this->insn.itype].name, COLOR_REGCMT);
-		out_spaces(18);
+		out_spaces(19);
 	}
 	else
 		out_line("error", COLOR_ERROR);
@@ -328,7 +353,7 @@ void out_tms320c66x_t::out_insn(void)
 	//[parallel] [cond] ins .[unit][cross path][op1], [op2], [op3]
 	if (this->insn.cflags & aux_fph)
 	{
-		this->out_line("        fetch packet header", COLOR_MACRO);
+		this->out_line("         fetch packet header", COLOR_MACRO);
 		this->flush_outbuf(-2);
 		return;
 	}
@@ -347,12 +372,13 @@ void out_tms320c66x_t::out_insn(void)
 	//输出条件符号
 	static const char* const conds[] =
 	{
-	  "     ", "     ", "[B0] ", "[!B0]",
-	  "[B1] ", "[!B1]", "[B2] ", "[!B2]",
-	  "[A1] ", "[!A1]", "[A2] ", "[!A2]",
-	  "[A0] ", "[!A0]", "     ", "     "
+	  "     ", "     ", "[ B0]", "[!B0]",
+	  "[ B1]", "[!B1]", "[ B2]", "[!B2]",
+	  "[ A1]", "[!A1]", "[ A2]", "[!A2]",
+	  "[ A0]", "[!A0]", "     ", "     "
 	};
 	this->out_keyword(conds[this->insn.cond]);
+	this->out_char(' ');
 	this->out_char(' ');
 
 	//输出指令
