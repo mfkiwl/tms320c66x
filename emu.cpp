@@ -1,5 +1,26 @@
 #include "fetch_packet.h"
 #include "tms66x.h"
+#include <vector>
+
+static std::vector<ea_t> g_func_start;
+
+static bool vector_contain(std::vector<ea_t> *v, ea_t addr)
+{
+    std::vector<ea_t>::iterator it = v->begin();
+    while (it != v->end())
+    {
+        if (addr == *it)
+            return true;
+        it++;
+    }
+    return false;
+}
+
+static void vector_append(std::vector<ea_t>* v, ea_t addr)
+{
+    if (vector_contain(v, addr) == false)
+        v->push_back(addr);
+}
 
 /* 
     处理数据引用
@@ -12,27 +33,30 @@ static void data_quote(const insn_t* insn, const op_t* x)
 
 }
 
-//在发生分支的地址后面delay slot内寻找是否有addkpc xx, B3, x操作
-//无条件B和BNOP应该是函数调用
+//在发生分支的地址后面delay slot内寻找是否有addkpc xx, B3, x操作，仅在delay slot没有另外跳转函数时
 static bool check_func_1(const insn_t* insn)
 {
     insn_t next_ins;
     ea_t next_adr = insn->ea + insn->size;
-    int loop = 6;
+    int loop = 5;
     if (insn->itype == TMS6_bnop)
         loop -= insn->Op2.value;
-    while (loop >= 0)
+    while (loop > 0)
     {
         if (decode_insn(&next_ins, next_adr) == 0)
             break;
-        if ((next_ins.cflags & aux_para) == 0)
-            loop -= 1;
-        if (next_ins.cflags & aux_fph)
-            continue;
-        if (next_ins.itype == TMS6_nop)
-            loop -= next_ins.Op1.value;
-        if (next_ins.itype == TMS6_addkpc && next_ins.Op2.reg == rB3)
-            return true;
+        if ((next_ins.cflags & aux_fph) == 0)
+        {
+            if ((next_ins.cflags & aux_para) == 0)
+                loop -= 1;
+            if (next_ins.itype == TMS6_nop)
+                loop -= next_ins.Op1.value;
+            //有可能函数和分支混在一起，该判断不应该存在
+            //if (next_ins.itype == TMS6_bnop || next_ins.itype == TMS6_b)
+            //    return false;
+            if (next_ins.itype == TMS6_addkpc && next_ins.Op2.reg == rB3)
+                return true;
+        }
         next_adr = next_ins.ea + next_ins.size;
     }
     return false;
@@ -75,15 +99,14 @@ static int code_quote(const insn_t* insn)
     if (insn->itype == TMS6_callp)
     {
         insn->add_cref(insn->Op1.addr, insn->Op1.offb, fl_CN);
+        vector_append(&g_func_start, insn->Op1.addr);
         return 1;
     }
 
     if (insn->itype == TMS6_bnop || insn->itype == TMS6_b)
     {
-        if (is_func(get_flags(insn->ea)))
-            return 1;
-
-        if (insn->cond == 0)    //无条件B和BNOP认为是函数调用
+		//is_func(get_flags(insn->Op1.addr))在没有真正makefunction时无用
+        if (is_func(get_flags(insn->Op1.addr)) || vector_contain(&g_func_start, insn->Op1.addr))
             return 1;
 
         bool check1, check2;
@@ -91,10 +114,10 @@ static int code_quote(const insn_t* insn)
         check1 = check_func_1(insn);
         //check2 = check_func_2(insn);
 
-        //if (check1 || check2)
-        if(check1)
+        if (check1)
         {
             insn->add_cref(insn->Op1.addr, insn->Op1.offb, fl_CN);
+            vector_append(&g_func_start, insn->Op1.addr);
             return 1;
         }
     }
@@ -119,14 +142,14 @@ static void handle_operand(const insn_t* insn, const op_t* x, bool isload)
     case o_near:
         if (code_quote(insn) == 0)
         {
-            if(insn->itype != TMS6_addkpc)
+            if (insn->itype != TMS6_addkpc)
                 insn->add_cref(x->addr, x->offb, fl_JN);
         }
         break;
     }
 }
 
-int emu(const insn_t* insn)
+int idaapi emu(const insn_t* insn)
 {
 	fetch_packet_t fp;
 	update_fetch_packet(insn->ea, &fp);
@@ -145,4 +168,46 @@ int emu(const insn_t* insn)
 		add_cref(insn->ea, insn->ea + insn->size, fl_F);	//相邻指令引用
 
 	return 1;
+}
+
+//判断指令是否仅为了对齐
+int idaapi is_align_insn(ea_t ea)
+{
+    insn_t insn;
+    decode_insn(&insn, ea);
+    switch (insn.itype)
+    {
+    case TMS6_mv:
+        if (insn.Op1.reg == insn.Op2.reg)
+            break;
+    case TMS6_nop:
+        break;
+    default:
+        return 0;
+    }
+    return insn.size;
+}
+
+//确定函数的结尾
+void idaapi check_func_bounds(int* possible_return_code, func_t* pfn, ea_t max_func_end_ea)
+{
+    //msg("[func_bounds]: %X-%X %X %X\n", pfn->start_ea, pfn->end_ea, *possible_return_code, max_func_end_ea);
+
+    //if (pfn != NULL)
+    //{
+    //    insn_t insn;
+    //    ea_t real_end = pfn->start_ea;
+    //    ea_t ea = pfn->start_ea;
+    //    while (ea < pfn->end_ea)
+    //    {
+    //        decode_insn(&insn, ea);
+    //        ea += insn.size;
+
+    //        if (insn.itype == TMS6_b || insn.itype == TMS6_bnop)
+    //        {
+    //            if(!is_func(get_flags(insn.Op1.addr)) && insn.Op1.addr >= real_end && insn.Op1.addr < max_func_end_ea)
+    //                real_end = 
+    //        }
+    //    }
+    //}
 }

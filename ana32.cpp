@@ -1505,7 +1505,9 @@ static int s_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
     case Sunit_7:
         insn->itype = TMS6_b;
         insn->funit = FU_S2;
-        make_reg(&insn->Op1, bits_ucst(code, 18, 5), true);
+        make_reg(&insn->Op1, bits_ucst(code, 18, 5), bits_ucst(code, 12, 1) != bits_ucst(code, 1, 1));
+        if (bits_check(code, 12))
+            insn->cflags |= aux_xp;
         return insn->size;
     case Sunit_8:
         insn->itype = bits_check(code, 18) ? TMS6_bnrp: TMS6_birp;
@@ -1524,8 +1526,10 @@ static int s_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
     case Sunit_11:
         insn->itype = TMS6_bnop;
         insn->funit = FU_S2;
-        make_reg(&insn->Op1, bits_ucst(code, 18, 5), true);
+        make_reg(&insn->Op1, bits_ucst(code, 18, 5), bits_ucst(code, 12, 1) != bits_ucst(code, 1, 1));
         make_imm(&insn->Op2, bits_ucst(code, 13, 3));
+        if (bits_check(code, 12))
+            insn->cflags |= aux_xp;
         return insn->size;
     case Sunit_12:
         insn->itype = TMS6_callp;

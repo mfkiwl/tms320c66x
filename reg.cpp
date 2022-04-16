@@ -136,6 +136,21 @@ ssize_t idaapi tms66x_t::on_event(ssize_t msgid, va_list va)
             return 1;
         }
 
+        case processor_t::ev_is_align_insn:
+        {
+            ea_t ea = va_arg(va, ea_t);
+            return is_align_insn(ea);
+        }
+
+        case processor_t::ev_func_bounds:
+        {
+            int* possible_return_code = va_arg(va, int*);
+            func_t* pfn = va_arg(va, func_t*);
+            ea_t max_func_end_ea = va_arg(va, ea_t);
+            check_func_bounds(possible_return_code, pfn, max_func_end_ea);
+            return 0;
+        }
+
         default:
             break;
     }

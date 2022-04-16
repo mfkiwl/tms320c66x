@@ -167,4 +167,6 @@ void idaapi out_mnem(outctx_t& ctx);
 bool idaapi out_opnd(outctx_t& ctx, const op_t& x);
 void idaapi header(outctx_t* ctx);
 void idaapi footer(outctx_t* ctx);
+void idaapi check_func_bounds(int* possible_return_code, func_t* pfn, ea_t max_func_end_ea);
+int idaapi is_align_insn(ea_t ea);
 #endif // _TMS66x_HPP
