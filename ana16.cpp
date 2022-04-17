@@ -299,7 +299,7 @@ static int make_ldst(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 	//13:1101 * ++Rb[Ro]
 	//14:1110 * Rb--[Ro]
 	//15:1111 * Rb++[Ro]
-	char ins_type, offset, src_dst, src1, ptr;
+	int ins_type, offset, src_dst, src1, ptr;
 
 	switch (ctype)
 	{
@@ -372,7 +372,7 @@ static int dls_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 	//  op   | 1  | 1  | 0  | src/dst | 1 | 1 |  unit | 1 | 1 | s
 	//  3                        3                2             1
 
-	char src_dst, op, unit;
+	int src_dst, op, unit;
 
 	src_dst = bits_ucst(code, 7, 3);
 	op = bits_ucst(code, 13, 3);
@@ -444,7 +444,7 @@ static char cc_table[] = { CO_A0, CO_NA0, CO_B0, CO_NB0 };
 
 static int d_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 {
-	char ld_st, offset, src_dst, src2, op;
+	int ld_st, offset, src_dst, src2, op;
 
 	ld_st = (code >> 3) & 1;
 	switch (ctype)
@@ -566,7 +566,7 @@ static int d_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 static int l_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 {
 	static const int l2c_table[8] = {TMS6_and, TMS6_or, TMS6_xor, TMS6_cmpeq, TMS6_cmplt, TMS6_cmpgt, TMS6_cmpltu, TMS6_cmpgtu};
-	char src1, src2, dst, cst;
+	int src1, src2, dst, cst;
 
 	switch (ctype)
 	{
@@ -705,7 +705,7 @@ static int m_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 
 static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 {
-	char n3, offset, src1, src2, dst;
+	int n3, offset, src1, src2, dst;
 	uint8_t ucst;
 	switch (ctype)
 	{
@@ -958,7 +958,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 
 static int dls_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 {
-	char dst, src2, unit, cc, op;
+	int dst, src2, unit, cc, op;
 
 	unit = bits_ucst(code, 3, 2);
 	switch (ctype)
@@ -1002,7 +1002,7 @@ static int dls_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph
 
 static int n_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 {
-	char ii, stage, mask, n3;
+	int ii, stage, mask, n3;
 	switch (ctype)
 	{
 	case TMSC6L_Uspl:
