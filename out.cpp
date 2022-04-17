@@ -318,7 +318,7 @@ bool out_tms320c66x_t::out_operand(const op_t& x)
 		}
 
 		default:
-			msg("out: %a: bad optype %d\n", insn.ea, x.type);
+			msg("[+]DEBUG: out: %a: bad optype %d\n", insn.ea, x.type);
 			break;
 	}
 	return true;

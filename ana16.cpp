@@ -432,7 +432,7 @@ static int dls_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		insn->itype = TMS6_mvc;
 		break;
 	default:
-		msg("%X: Reserved ins detect, op=%d\n", insn->ea, op);
+		msg("[+]DEBUG: %X: Reserved ins detect, op=%d\n", insn->ea, op);
 		return 0;
 	}
 
@@ -1088,7 +1088,7 @@ int idaapi ana16(insn_t* insn, fetch_packet_t* fp)
 	}
 	else
 	{
-		msg("fetch packet header invalid when process compact instruction\n");
+		msg("[+]DEBUG: fetch packet header invalid when process compact instruction\n");
 		return -1;
 	}
 

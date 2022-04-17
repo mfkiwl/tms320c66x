@@ -300,9 +300,10 @@ static int make_op(
     uint32 code,
     uchar optype,
     int32 v,
-    bool is_Aside,
+    bool x_bit,
     fetch_packet_t* fp)
 {
+    bool is_other = false;
     switch (optype)
     {
     case t_none:
@@ -319,6 +320,15 @@ static int make_op(
     case t_int:
     case t_bv2:
     case t_bv4:
+    case t_dst:
+    case t_op1:
+    case t_op2:
+    case t_slsb16:
+    case t_ulsb16:
+    case t_smsb16:
+    case t_umsb16:
+        make_reg(&x, v, bits_check(code, 1));
+        break;
     case t_xs2:
     case t_xu2:
     case t_xi2:
@@ -331,18 +341,11 @@ static int make_op(
     case t_xop:
     case t_xop1:
     case t_xop2:
-    case t_dst:
-    case t_op1:
-    case t_op2:
-    case t_slsb16:
-    case t_ulsb16:
-    case t_smsb16:
-    case t_umsb16:
     case t_xslsb16:
     case t_xulsb16:
     case t_xsmsb16:
     case t_xumsb16:
-        make_reg(&x, v, is_Aside);
+        make_reg(&x, v, (int)x_bit != bits_ucst(code, 1, 1));
         break;
     case t_dint:
     case t_duint:
@@ -352,28 +355,36 @@ static int make_op(
     case t_ullong:
     case t_dws4:
     case t_dwu4:
-    case t_xslong:
-    case t_xulong:
     case t_dwdst:
     case t_dwop1:
+        make_regpair(&x, v, bits_check(code, 1), false);
+        break;
+    case t_xslong:
+    case t_xulong:
     case t_xdwop:
     case t_xdwop1:
     case t_xdwop2:
-        make_regpair(&x, v, is_Aside, false);
+        make_regpair(&x, v, (int)x_bit != bits_ucst(code, 1, 1), false);
         break;
     case t_qwop1:
     case t_qwop2:
     case t_qwdst:
-        make_regpair(&x, v, is_Aside, true);
+        make_regpair(&x, v, bits_check(code, 1), true);
         break;
     case t_sp:
+        make_reg(&x, v, bits_check(code, 1));
+        x.dtype = dt_float;
+        break;
     case t_xsp:
-        make_reg(&x, v, is_Aside);
+        make_reg(&x, v, (int)x_bit != bits_ucst(code, 1, 1));
         x.dtype = dt_float;
         break;
     case t_dp:
+        make_regpair(&x, v, bits_check(code, 1), false);
+        x.dtype = dt_double;
+        break;
     case t_xdp:
-        make_regpair(&x, v, is_Aside, false);
+        make_regpair(&x, v, (int)x_bit != bits_ucst(code, 1, 1), false);
         x.dtype = dt_double;
         break;
     case t_ucst1:
@@ -438,7 +449,7 @@ static int make_op(
         make_reg(&x, rB14 + bits_ucst(code, 7, 1), false);
         break;
     case t_a3:
-        make_reg(&x, rA3, is_Aside);
+        make_reg(&x, rA3, bits_check(code, 1));
         break;
     default:
         msg("[+]DEBUG: unknown opcode type %d\n", optype);
@@ -547,7 +558,7 @@ static int table_insns(
 	insn_t& insn,
 	uint32 code,
 	const tmsinsn_t* tinsn,
-	bool cross_path,
+	bool x_bit,
     fetch_packet_t* fp,
     bool src2_first)
 {
@@ -559,18 +570,18 @@ static int table_insns(
 	if (tinsn->itype == TMS6_null)
 		return 0;
 	insn.itype = tinsn->itype;
-	if (cross_path)
+	if (x_bit)
 		insn.cflags |= aux_xp;  // xpath is used
 	op_t* xptr = &insn.Op1;
-	if (!make_op(insn, *xptr, code, tinsn->src1, bits_ucst(code, 13, 5), bits_check(code, 1), fp))
+	if (!make_op(insn, *xptr, code, tinsn->src1, bits_ucst(code, 13, 5), x_bit, fp))
 		return 0;
 	if (xptr->type != o_void)
 		xptr++;
-	if (!make_op(insn, *xptr, code, tinsn->src2, bits_ucst(code, 18, 5), (uint32_t)cross_path != bits_ucst(code, 1, 1), fp))
+	if (!make_op(insn, *xptr, code, tinsn->src2, bits_ucst(code, 18, 5), x_bit, fp))
 		return 0;
 	if (xptr->type != o_void)
 		xptr++;
-	if (!make_op(insn, *xptr, code, tinsn->dst, bits_ucst(code, 23, 5), bits_check(code, 1), fp))
+	if (!make_op(insn, *xptr, code, tinsn->dst, bits_ucst(code, 23, 5), x_bit, fp))
 		return 0;
     
     make_pseudo(&insn);

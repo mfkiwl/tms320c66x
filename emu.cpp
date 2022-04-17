@@ -38,26 +38,43 @@ static bool check_func_1(const insn_t* insn)
 {
     insn_t next_ins;
     ea_t next_adr = insn->ea + insn->size;
-    int loop = 5;
-    if (insn->itype == TMS6_bnop)
-        loop -= insn->Op2.value;
+    int loop = insn->itype == TMS6_bnop ? 5 - insn->Op2.value : 5;
+
+    //先执行完跳转指令所在的执行包
+    //if (insn->cflags & aux_para)
+    //{
+    //    while (1)
+    //    {
+    //        if (decode_insn(&next_ins, next_adr) == 0)
+    //            return false;
+    //        next_adr += insn->size;
+
+    //        //fph则顺延
+    //        if (insn->cflags & aux_fph)
+    //            continue;
+    //        if ((insn->cflags & aux_para) == 0)
+    //            break;
+    //    }
+    //}
+
     while (loop > 0)
     {
         if (decode_insn(&next_ins, next_adr) == 0)
-            break;
-        if ((next_ins.cflags & aux_fph) == 0)
-        {
-            if ((next_ins.cflags & aux_para) == 0)
-                loop -= 1;
-            if (next_ins.itype == TMS6_nop)
-                loop -= next_ins.Op1.value;
-            //有可能函数和分支混在一起，该判断不应该存在
-            //if (next_ins.itype == TMS6_bnop || next_ins.itype == TMS6_b)
-            //    return false;
-            if (next_ins.itype == TMS6_addkpc && next_ins.Op2.reg == rB3)
-                return true;
-        }
+            return false;
         next_adr = next_ins.ea + next_ins.size;
+
+        if (next_ins.cflags & aux_fph)
+            continue;
+
+        if ((next_ins.cflags & aux_para) == 0)
+            loop -= 1;          
+        if (next_ins.itype == TMS6_nop)
+            loop -= (next_ins.Op1.value - 1);    
+        //有可能函数和分支混在一起，该判断不应该存在
+        //if (next_ins.itype == TMS6_bnop || next_ins.itype == TMS6_b)
+        //    return false;
+        if (next_ins.itype == TMS6_addkpc && next_ins.Op2.reg == rB3)
+            return true;
     }
     return false;
 }
@@ -107,14 +124,17 @@ static int code_quote(const insn_t* insn)
     {
 		//is_func(get_flags(insn->Op1.addr))在没有真正makefunction时无用
         if (is_func(get_flags(insn->Op1.addr)) || vector_contain(&g_func_start, insn->Op1.addr))
+        {
+            insn->add_cref(insn->Op1.addr, insn->Op1.offb, fl_CN);
             return 1;
+        }
 
         bool check1, check2;
 
         check1 = check_func_1(insn);
-        //check2 = check_func_2(insn);
+        check2 = check_func_2(insn);
 
-        if (check1)
+        if (check1 || check2)
         {
             insn->add_cref(insn->Op1.addr, insn->Op1.offb, fl_CN);
             vector_append(&g_func_start, insn->Op1.addr);
@@ -142,6 +162,8 @@ static void handle_operand(const insn_t* insn, const op_t* x, bool isload)
     case o_near:
         if (code_quote(insn) == 0)
         {
+            if (insn->Op1.addr == 0x39080)
+                msg("%X add jump -> %X\n", insn->ea, insn->Op1.addr);
             if (insn->itype != TMS6_addkpc)
                 insn->add_cref(x->addr, x->offb, fl_JN);
         }
@@ -188,26 +210,109 @@ int idaapi is_align_insn(ea_t ea)
     return insn.size;
 }
 
+static ea_t skip_delay_slot(insn_t *insn)
+{
+    int delay = insn->itype == TMS6_bnop ? 5 - insn->Op2.value : 5;
+
+    //先执行完跳转指令所在的执行包
+    ea_t ea = insn->ea + insn->size;
+    if (insn->cflags & aux_para)
+    {
+        while (1)
+        {
+            if (decode_insn(insn, ea) == 0)
+                return BADADDR;
+            ea += insn->size;
+
+            //fph则顺延
+            if (insn->cflags & aux_fph)
+                continue;
+            if ((insn->cflags & aux_para) == 0)
+                break;
+        }
+    }
+
+    //跳过delay slot的执行包
+    while (delay > 0)
+    {
+        if (decode_insn(insn, ea) == 0)
+            return BADADDR;
+        ea += insn->size;
+
+        //fph则顺延
+        if (insn->cflags & aux_fph)
+            continue;
+        if ((insn->cflags & aux_para) == 0)
+            delay -= 1;
+        if (insn->itype == TMS6_nop)
+            delay -= (insn->Op1.value - 1); 
+    }
+
+    return ea;
+}
+
+static bool check_branch(ea_t ea, ea_t min_ea, ea_t max_ea)
+{
+    bool loop = false;
+    insn_t insn;
+
+    do
+    {
+        loop = false;
+
+        //若为函数结尾，此时ea不为函数开头
+        if (is_func(get_flags(ea)) || vector_contain(&g_func_start, ea))
+            return false;
+
+        ea_t q_adr = get_first_fcref_from(ea);
+        //若adr有引用它的地址，并且该地址在函数范围内，则它是函数的分支
+        if (q_adr >= min_ea && q_adr <= max_ea)
+            return true;
+
+        if (decode_insn(&insn, ea) == 0)
+            return false;
+        ea += insn.size;
+        //fph则顺延
+        if (insn.cflags & aux_fph)
+            continue;
+        //如果是填充指令则顺延
+        if (insn.itype == TMS6_nop)
+            loop = true;
+
+    } while (loop);
+
+    return false;
+}
+
 //确定函数的结尾
 void idaapi check_func_bounds(int* possible_return_code, func_t* pfn, ea_t max_func_end_ea)
 {
     //msg("[func_bounds]: %X-%X %X %X\n", pfn->start_ea, pfn->end_ea, *possible_return_code, max_func_end_ea);
 
-    //if (pfn != NULL)
-    //{
-    //    insn_t insn;
-    //    ea_t real_end = pfn->start_ea;
-    //    ea_t ea = pfn->start_ea;
-    //    while (ea < pfn->end_ea)
-    //    {
-    //        decode_insn(&insn, ea);
-    //        ea += insn.size;
+    if (pfn != NULL)
+    {
+        insn_t insn;
+        ea_t ea = pfn->start_ea;
+        while (ea < pfn->end_ea)
+        {
+            if (decode_insn(&insn, ea) == 0) 
+                break;
+            ea += insn.size;
 
-    //        if (insn.itype == TMS6_b || insn.itype == TMS6_bnop)
-    //        {
-    //            if(!is_func(get_flags(insn.Op1.addr)) && insn.Op1.addr >= real_end && insn.Op1.addr < max_func_end_ea)
-    //                real_end = 
-    //        }
-    //    }
-    //}
+            //寻找B B3或BNOP B3,X
+            if ((insn.itype == TMS6_b || insn.itype == TMS6_bnop) && insn.Op1.reg == rB3)
+            {
+                //跳过delay slot
+                ea = skip_delay_slot(&insn);
+                if (ea == BADADDR || ea > max_func_end_ea)
+                    return;
+
+                if (check_branch(ea, pfn->start_ea, max_func_end_ea) == false)
+                {
+                    pfn->end_ea = ea;
+                    return;
+                }
+            }
+        }
+    }
 }
