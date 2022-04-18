@@ -14,7 +14,8 @@ public:
 	void out_pre_mode(int mode);
 	void out_post_mode(int mode);
 	void print_stg_cyc(ea_t ea, int stgcyc);
-	bool tms6_out_name_expr(const op_t& x, uval_t opval);
+	void out_loop_tag();
+
 };
 CASSERT(sizeof(out_tms320c66x_t) == sizeof(outctx_t));
 
@@ -56,7 +57,7 @@ void idaapi footer(outctx_t* ctx)
 			COLSTR("%s %s", SCOLOR_AUTOCMT), ash.end, ash.cmnt, name);
 }
 
-bool is_first_insn_in_exec_packet(ea_t ea)
+static bool is_first_insn_in_exec_packet(ea_t ea)
 {
 	//上一条指令没有aux_para即为执行包的第一条指令
 	insn_t insn;
@@ -348,9 +349,63 @@ void out_tms320c66x_t::out_mnem(void)
 		out_line("error", COLOR_ERROR);
 }
 
+//添加循环的屏蔽标记
+void out_tms320c66x_t::out_loop_tag()
+{
+	//todo: 以下操作矛盾
+	//00000364   004B0001           SPMASK        L2,D1
+	//00000368   04C82267 ||        LDW.D1T2      *+A18[1],B9
+	//0000036C   0350B07B ||^       ADD.L2X       B5,A20,B6
+	//
+	//00000378       AC66           SPMASK        D2
+	//0000037A       D37D ||^       LDHU.D2T2     *B6[6],B23
+	//
+	//000276A2       6C66           SPMASK        D1
+	//000276A4   03C069E1 ||        SHRU.S1       A16,A3,A7
+	//000276A8       137C ||^       LDHU.D1T2     *A6[0],B7
+	//
+	//00028620   00830001           SPMASK        D2
+	//00028624   02BD82B4 ||        STB.D2T1      A5,*+B15[12]
+	if (this->insn.itype == TMS6_spmask || this->insn.itype == TMS6_spmaskr || this->insn.funit == FU_NONE)
+	{
+		this->out_char(' ');
+		return;
+	}
+	
+	insn_t ins;
+	ea_t ea = prev_not_tail(this->insn.ea);
+	if (ea != BADADDR && is_code(get_flags(ea)))
+	{
+		while (1)
+		{
+			if (decode_insn(&ins, ea) == 0)
+				break;
+			ea = prev_not_tail(ea);
+			if (ea == BADADDR || !is_code(get_flags(ea)))
+				break;
+
+			if ((ins.cflags & aux_para) == 0)
+				break;
+
+			if (ins.itype == TMS6_spmask || ins.itype == TMS6_spmaskr)
+			{
+				//ins.Op1.reg <=> [MMDDSSLL]
+				//NOTE: FU_L1=1  FU_M2=8 不能改变
+				int mask = 1 << (this->insn.funit - 1);
+				if (ins.Op1.reg & mask)
+				{
+					this->out_char('^');
+					return;
+				}
+			}
+		}
+	}
+	this->out_char(' ');
+}
+
 void out_tms320c66x_t::out_insn(void)
 {
-	//[parallel] [cond] ins .[unit][cross path][op1], [op2], [op3]
+	//[parallel][^] [cond] ins .[unit][cross path][op1], [op2], [op3]
 	if (this->insn.cflags & aux_fph)
 	{
 		this->out_line("         fetch packet header", COLOR_MACRO);
@@ -368,6 +423,9 @@ void out_tms320c66x_t::out_insn(void)
 		this->out_char(' ');
 		this->out_char(' ');
 	}
+
+	//输出循环标记^
+	out_loop_tag();
 
 	//输出条件符号
 	static const char* const conds[] =

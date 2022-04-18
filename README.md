@@ -5,5 +5,3 @@ IDA处理器插件，仅支持IDA7.6以上，低于7.6版本可能存在sdk不�
 # usage
 将tms320c66x放入IDA目录下procs文件下
 
-# issue
-loop标记^未实现

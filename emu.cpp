@@ -67,9 +67,13 @@ static bool check_func_1(const insn_t* insn)
             continue;
 
         if ((next_ins.cflags & aux_para) == 0)
-            loop -= 1;          
-        if (next_ins.itype == TMS6_nop)
-            loop -= (next_ins.Op1.value - 1);    
+        {
+            if (next_ins.itype == TMS6_nop)
+                loop -= (next_ins.Op1.value - 1);
+            else
+                loop -= 1;
+        }
+  
         //有可能函数和分支混在一起，该判断不应该存在
         //if (next_ins.itype == TMS6_bnop || next_ins.itype == TMS6_b)
         //    return false;

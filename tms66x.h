@@ -52,6 +52,7 @@ enum mode_t : uint8_t
 
 //------------------------------------------------------------------
 // 指令的操作单元、ana中需要为insn设置该值
+//NOTE: FU_L1=1  FU_M2=8 不能改变。在输出循环标记时写死了该值
 // Functional units:
 #define funit segpref     //insn_t->segpref
 enum funit_t : uint8_t
@@ -68,12 +69,12 @@ enum funit_t : uint8_t
                                 // Branches
                                 // Constant generation
                                 // Register transfers to/from the control register file (.S2 only)
-
-  FU_M1, FU_M2,                 // 16 x 16 bit multiply operations
-
   FU_D1, FU_D2,                 // 32-bit add, subtract, linear and circular address calculation
                                 // Loads and stores with a 5-bit constant offset
                                 // Loads and stores with 15-bit constant offset (.D2 only)
+  FU_M1, FU_M2,                 // 16 x 16 bit multiply operations
+
+
 };
 //------------------------------------------------------------------
 // condition codes:
