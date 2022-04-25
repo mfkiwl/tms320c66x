@@ -450,8 +450,8 @@ void out_tms320c66x_t::out_insn(void)
 	  NULL,
 	  ".L1", ".L2",
 	  ".S1", ".S2",
-	  ".M1", ".M2",
 	  ".D1", ".D2",
+	  ".M1", ".M2",
 	};
 	if (this->insn.funit != FU_NONE)
 		this->out_keyword(units[uchar(this->insn.funit)]);

@@ -513,9 +513,9 @@ static int d_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		make_imm(&insn->Op2, offset);
 		make_reg(&insn->Op3, rB15, false, fph->rs);
 		if (bits_check(code, 7))
-			insn->itype = TMS6_addaw;
-		else
 			insn->itype = TMS6_subaw;
+		else
+			insn->itype = TMS6_addaw;
 		insn->funit = bits_check(code, 0) ? FU_D2 : FU_D1;
 		insn->size = 2;
 		return 2;
@@ -708,7 +708,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 	switch (ctype)
 	{
 	case TMSC6L_Sbs7:
-		n3 = (code >> 13) & 7;
+		n3 = bits_scst(code, 13, 3);
 		offset = bits_scst(code, 6, 7);
 		make_near(&insn->Op1, fph->adr - 28, offset);
 		make_imm(&insn->Op2, n3);
@@ -717,7 +717,7 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		insn->funit = bits_check(code, 0) ? FU_S2 : FU_S1;
 		return 2;
 	case TMSC6L_Sbu8:
-		offset = (code >> 6) & 0xFF;
+		offset = bits_scst(code, 6, 8);
 		make_near(&insn->Op1, fph->adr - 28, offset);
 		make_imm(&insn->Op2, 5);
 		insn->itype = TMS6_bnop;
@@ -788,9 +788,9 @@ static int s_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		make_imm(&insn->Op2, src1);
 		make_reg(&insn->Op3, dst, bits_check(code, 0), fph->rs);
 		if (bits_check(code, 11))
-			insn->itype = TMS6_shl;
-		else
 			insn->itype = TMS6_shr;
+		else
+			insn->itype = TMS6_shl;
 		if (bits_ucst(code, 12, 1))
 			insn->cflags |= aux_xp;
 		insn->size = 2;
