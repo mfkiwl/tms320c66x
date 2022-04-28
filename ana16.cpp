@@ -653,7 +653,7 @@ static int l_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph)
 		src2 = bits_ucst(code, 7, 3);
 		make_imm(&insn->Op1, cst);
 		make_reg(&insn->Op2, src2, bits_check(code, 0), fph->rs);
-		make_reg(&insn->Op3, dst, bits_check(code, 0), fph->rs);
+		make_reg(&insn->Op3, dst, bits_check(code, 0), 0);	//rs bit ignore
 		switch (bits_ucst(code, 14, 2))
 		{
 		case 0:
@@ -965,16 +965,20 @@ static int dls_unit_ins(insn_t* insn, int ctype, uint16_t code, fp_header_t* fph
 	case TMSC6L_LSDmvfr:
 		if (ctype == TMSC6L_LSDmvto)
 		{
-			dst = bits_ucst(code, 13, 3); 
-			src2 = bits_ucst(code, 7, 5); 
+			dst = bits_ucst(code, 13, 3);
+			src2 = bits_ucst(code, 7, 5);	//src 5bits, so ignore rs bits
+			make_reg(&insn->Op1, src2, bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1), 0);
+			make_reg(&insn->Op2, dst, bits_ucst(code, 0, 1), fph->rs);
+
 		}
 		else
 		{
-			dst = bits_ucst(code, 10, 2, 3) | bits_ucst(code, 13, 3);
+			dst = bits_ucst(code, 10, 2, 3) | bits_ucst(code, 13, 3);		//dst 5bits, so ignore rs bits
 			src2 = bits_ucst(code, 7, 3);
+			make_reg(&insn->Op1, src2, bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1), fph->rs);
+			make_reg(&insn->Op2, dst, bits_ucst(code, 0, 1), 0);
 		}
-		make_reg(&insn->Op1, src2, bits_ucst(code, 12, 1) != bits_ucst(code, 0, 1), fph->rs);
-		make_reg(&insn->Op2, dst, bits_ucst(code, 0, 1), fph->rs);
+
 		if (bits_ucst(code, 12, 1))
 			insn->cflags |= aux_xp;
 		insn->funit = get_unit_type(unit, bits_ucst(code, 0, 1));

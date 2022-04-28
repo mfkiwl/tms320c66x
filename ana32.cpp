@@ -1579,7 +1579,7 @@ static int n_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
 
 	if (ctype == Nunit_3 || ctype == Nunit_4)
 	{
-        if(op == 12 || op == 13 || op == 14)    //sploop ins
+        if(op == 12 || op == 13 || op == 15)    //sploop ins
             make_imm(&insn->Op1, bits_ucst(code, 23, 5) + 1);
 		switch (op)
 		{
@@ -1601,7 +1601,7 @@ static int n_unit_ins(insn_t* insn, int ctype, uint32_t code, fetch_packet_t* fp
         case 13:   
             insn->itype = TMS6_sploopd;
             break;
-        case 14:   
+        case 15:   
             insn->itype = TMS6_sploopw;
             break;
 		}

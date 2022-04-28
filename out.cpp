@@ -384,6 +384,9 @@ void out_tms320c66x_t::out_loop_tag()
 			if (ea == BADADDR || !is_code(get_flags(ea)))
 				break;
 
+			if (ins.cflags & aux_fph)
+				continue;
+
 			if ((ins.cflags & aux_para) == 0)
 				break;
 
@@ -408,7 +411,7 @@ void out_tms320c66x_t::out_insn(void)
 	//[parallel][^] [cond] ins .[unit][cross path][op1], [op2], [op3]
 	if (this->insn.cflags & aux_fph)
 	{
-		this->out_line("         fetch packet header", COLOR_MACRO);
+		this->out_line("          fetch packet header", COLOR_MACRO);
 		this->flush_outbuf(-2);
 		return;
 	}
